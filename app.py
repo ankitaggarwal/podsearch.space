@@ -538,6 +538,16 @@ def index():
 
 app.mount("/ui", StaticFiles(directory="ui"), name="ui")
 
+# Oversize-audio handoff: when an episode is too big for the gateway's 50 MB
+# download cap, the indexer compresses it into smaller chunks and the gateway
+# fetches them back over public HTTPS. Serve that scratch dir so the gateway can
+# reach the chunks at LIVE_AUDIO_BASE_URL. Only mounted when the feature is in
+# use (LIVE_AUDIO_BASE_URL set), so it isn't exposed otherwise.
+from config import TEMP_AUDIO_DIR, LIVE_AUDIO_BASE_URL  # noqa: E402
+if LIVE_AUDIO_BASE_URL:
+    os.makedirs(TEMP_AUDIO_DIR, exist_ok=True)
+    app.mount("/_tmp_audio", StaticFiles(directory=TEMP_AUDIO_DIR), name="tmp_audio")
+
 # ── Main ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
