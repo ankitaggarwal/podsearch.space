@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.DS_Store
+.mcp.json
+transcripts/
+audio_cache/
+tmp_audio/
+.episode_catalog.json
+
+# Local AI-assistant tooling / notes (not part of the product)
+CLAUDE.md
+CLAUDE.local.md
+HANDOFF.local.md
+.claude/
+
+# LinkedIn project assets (writeups, screenshots, GIFs — local-only)
+linkedin/
+
+# Scratch / local-only working files
+tmp/

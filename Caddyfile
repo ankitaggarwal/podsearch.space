@@ -1,0 +1,6 @@
+# Replace podsearch.space with your domain. Caddy fetches and renews the HTTPS
+# certificate automatically once DNS points at this server.
+podsearch.space {
+    encode gzip
+    reverse_proxy web:8000
+}

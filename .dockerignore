@@ -1,0 +1,16 @@
+.git
+.gitignore
+.env
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+transcripts/
+audio_cache/
+tmp_audio/
+node_modules
+.DS_Store
+*.md
+docs/
+.github/

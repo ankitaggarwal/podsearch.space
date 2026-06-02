@@ -1,0 +1,12 @@
+# Core
+qdrant-client>=1.12.0     # vector storage + retrieval
+psycopg2-binary>=2.9.10   # PostgreSQL: episode catalog + raw transcripts
+openai>=2.0.0             # OpenAI-compatible SDK — points at the self-hosted inference gateway for chat AND embeddings
+feedparser>=6.0.0
+requests>=2.33.0
+python-dotenv>=1.0.0      # loads .env for local development
+
+# Web server
+fastapi>=0.130.0
+uvicorn>=0.46.0
+mcp>=1.27.0

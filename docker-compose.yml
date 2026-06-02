@@ -1,0 +1,51 @@
+# One image, three services on a single droplet:
+#   web      — the FastAPI app (search API, website, /mcp), crawler off
+#   pipeline — the indexer, looping continuously to discover + transcribe episodes
+#   caddy    — reverse proxy with automatic HTTPS
+#
+# Postgres, Qdrant, and the inference gateway live elsewhere and are configured
+# through .env (they are NOT run on the droplet).
+
+services:
+  web:
+    build: .
+    image: podcast-search:latest
+    command: uvicorn app:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    environment:
+      - CRAWLER_ENABLED=false        # the pipeline container does the crawling
+    expose:
+      - "8000"
+    volumes:
+      - audio:/tmp/podsearch_audio   # shared with pipeline for oversize-audio handoff
+    restart: unless-stopped
+
+  pipeline:
+    image: podcast-search:latest
+    command: ["sh", "-c", "while true; do python transcribe.py --all || true; echo 'index pass complete — sleeping 1h'; sleep 3600; done"]
+    env_file: .env
+    environment:
+      - LIVE_RELAY_URL=http://web:8000   # stream crawl events to the live site
+    volumes:
+      - audio:/tmp/podsearch_audio
+    depends_on:
+      - web
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+    restart: unless-stopped
+
+volumes:
+  audio:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,1995 @@
+<!DOCTYPE html>
+<!--
+  ui/index.html — the entire web frontend, in one file.
+
+  This is a deliberately build-step-free React app: React, Babel, and a couple of
+  small libraries are loaded from a CDN, and the JSX below is transpiled in the
+  browser. No npm install, no bundler — open the file (served by app.py) and it runs.
+  Great for a small project; for a larger app you'd move to a real build (Vite, etc.).
+
+  It talks to the FastAPI backend over the /api/* endpoints: search, the episode
+  library, per-episode pages, and the live crawler panel (which streams indexing
+  progress as it happens).
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Podcast Search</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 440 220'><path d='M100 145Q100 45 220 38Q340 45 340 145' fill='none' stroke='%23195524' stroke-width='18' stroke-linecap='round'/><rect x='68' y='118' width='50' height='68' rx='14' fill='%23195524'/><rect x='74' y='124' width='38' height='56' rx='10' fill='%232A8F4E'/><rect x='80' y='131' width='26' height='42' rx='7' fill='%23195524'/><rect x='322' y='118' width='50' height='68' rx='14' fill='%23195524'/><rect x='328' y='124' width='38' height='56' rx='10' fill='%232A8F4E'/><rect x='334' y='131' width='26' height='42' rx='7' fill='%23195524'/><circle cx='170' cy='155' r='42' fill='none' stroke='%23195524' stroke-width='8'/><circle cx='170' cy='155' r='34' fill='white'/><circle cx='170' cy='155' r='34' fill='none' stroke='%23195524' stroke-width='3'/><circle cx='170' cy='155' r='22' fill='%23195524'/><rect x='207' y='174' width='26' height='6' rx='3' fill='%23195524'/><circle cx='270' cy='155' r='42' fill='none' stroke='%23195524' stroke-width='8'/><circle cx='270' cy='155' r='34' fill='white'/><circle cx='270' cy='155' r='34' fill='none' stroke='%23195524' stroke-width='3'/><circle cx='270' cy='155' r='22' fill='%23195524'/></svg>">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;400;500;600;700&family=General+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=clash-grotesk@400,500,600&display=swap" rel="stylesheet">
+    <!-- Pinned CDN versions for supply-chain stability. Bump deliberately, not silently. -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js" crossorigin="anonymous"></script>
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #fffbf3;
+            --glass: rgba(255,255,255,0.58);
+            --glass-subtle: rgba(255,255,255,0.40);
+            --glass-green: rgba(193,220,200,0.45);
+            --glass-green-strong: rgba(193,220,200,0.28);
+            --shine-top: inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -1px 0 rgba(255,255,255,0.15);
+            --border-green: rgba(193,220,200,0.65);
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+            --shadow-md: 0 8px 32px rgba(50,64,108,0.10), 0 2px 6px rgba(0,0,0,0.04);
+            --shadow-lg: 0 16px 48px rgba(50,64,108,0.14), 0 4px 12px rgba(0,0,0,0.05);
+            --shadow-glow: 0 8px 32px rgba(25,85,36,0.12), 0 2px 8px rgba(25,85,36,0.08);
+            --text-1: #111424;
+            --text-2: #4a5568;
+            --text-3: #8b92a8;
+            --green-dark: #195524;
+            --green-soft: rgba(193,220,200,0.18);
+            --user-grad: linear-gradient(135deg, #14432a 0%, #1e6b3a 50%, #2a8f4e 100%);
+            --r: 22px;
+            --r-sm: 14px;
+            --r-full: 999px;
+        }
+
+        body {
+            font-family: 'DM Sans', 'General Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text-1);
+            min-height: 100dvh;
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+            letter-spacing: -0.01em;
+        }
+
+        /* -- Glossy base sheen -- */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 70% 50% at 30% 20%, rgba(255,255,255,0.55) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 40% at 70% 80%, rgba(255,253,248,0.4) 0%, transparent 50%),
+                linear-gradient(180deg, rgba(255,255,255,0.3) 0%, transparent 40%, rgba(255,252,245,0.2) 100%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* -- Animated gradient orbs -- */
+        .orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(70px);
+            opacity: 0.6;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .orb-1 {
+            width: 550px; height: 550px;
+            background: radial-gradient(circle, rgba(91,115,255,0.28) 0%, transparent 70%);
+            top: -12%;  left: -8%;
+            animation: drift1 18s ease-in-out infinite;
+        }
+        .orb-2 {
+            width: 450px; height: 450px;
+            background: radial-gradient(circle, rgba(255,75,189,0.20) 0%, transparent 70%);
+            bottom: -10%; right: -8%;
+            animation: drift2 14s ease-in-out infinite;
+        }
+        .orb-3 {
+            width: 380px; height: 380px;
+            background: radial-gradient(circle, rgba(64,195,255,0.20) 0%, transparent 70%);
+            top: 35%; right: 10%;
+            animation: drift3 20s ease-in-out infinite;
+        }
+        .orb-4 {
+            width: 300px; height: 300px;
+            background: radial-gradient(circle, rgba(253,227,170,0.25) 0%, transparent 70%);
+            top: 60%; left: -5%;
+            animation: drift2 22s ease-in-out infinite reverse;
+        }
+        @keyframes drift1 {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(60px, 40px) scale(1.05); }
+            66% { transform: translate(-30px, 70px) scale(0.97); }
+        }
+        @keyframes drift2 {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(-50px, -30px) scale(1.08); }
+            66% { transform: translate(40px, -60px) scale(0.95); }
+        }
+        @keyframes drift3 {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(-40px, 50px) scale(1.06); }
+        }
+
+        /* -- Noise grain for texture -- */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            opacity: 0.018;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 1;
+        }
+
+
+        /* -- App Shell -- */
+        .app {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
+            width: 100%;
+            padding: 0 2.5rem;
+        }
+
+        /* -- Page transitions -- */
+        .page-fade-enter {
+            animation: pageFadeIn 200ms ease both;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        @keyframes pageFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* -- Header (slim top navbar — always visible) -- */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.8rem 0 0.6rem;
+            flex-shrink: 0;
+            border-bottom: 1px solid rgba(193,220,200,0.3);
+        }
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+        }
+        .header-brand .logo-icon {
+            width: 56px;
+            height: auto;
+            flex-shrink: 0;
+        }
+        .logo-icon .eye-pupil {
+            animation: blink 5s ease-in-out infinite;
+            transform-box: fill-box;
+            transform-origin: center center;
+        }
+        .logo-icon .eye-pupil:last-of-type {
+            animation-delay: 0s;
+        }
+        @keyframes blink {
+            0%, 38%, 42%, 100% { transform: scaleY(1); }
+            40% { transform: scaleY(0.08); }
+        }
+        .header-brand h1 {
+            font-family: 'Clash Display', 'General Sans', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--text-1);
+            letter-spacing: -0.03em;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .badge {
+            display: inline-block;
+            background: var(--glass-green);
+            backdrop-filter: blur(16px) saturate(200%);
+            -webkit-backdrop-filter: blur(16px) saturate(200%);
+            color: var(--green-dark);
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 0.35rem 1rem;
+            border-radius: var(--r-full);
+            letter-spacing: 0.02em;
+            border: 1.5px solid var(--border-green);
+            box-shadow: var(--shadow-sm), var(--shine-top);
+        }
+
+        /* -- Navigation -- */
+        .nav {
+            display: flex;
+            justify-content: center;
+            gap: 0.4rem;
+            margin-top: 0;
+        }
+        .nav-link {
+            background: var(--glass);
+            backdrop-filter: blur(16px) saturate(200%);
+            -webkit-backdrop-filter: blur(16px) saturate(200%);
+            border: 1.5px solid rgba(255,255,255,0.80);
+            border-radius: var(--r-full);
+            padding: 0.42rem 1.1rem;
+            font-size: 0.76rem;
+            font-weight: 600;
+            color: var(--text-3);
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.22,1,0.36,1);
+            user-select: none;
+            box-shadow: var(--shadow-sm), var(--shine-top);
+            text-decoration: none;
+            display: inline-block;
+        }
+        .nav-link:hover {
+            color: var(--green-dark);
+            border-color: var(--border-green);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-glow), var(--shine-top);
+        }
+        .nav-link.active {
+            background: var(--glass-green);
+            color: var(--green-dark);
+            border-color: var(--border-green);
+            box-shadow: var(--shadow-glow), var(--shine-top);
+        }
+
+        /* -- Chat Area -- */
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
+            padding: 0.8rem 0 0.5rem;
+            max-width: 960px;
+            margin-left: auto;
+            margin-right: auto;
+            width: 100%;
+            scroll-behavior: smooth;
+        }
+        .chat-area::-webkit-scrollbar { width: 4px; }
+        .chat-area::-webkit-scrollbar-track { background: transparent; }
+        .chat-area::-webkit-scrollbar-thumb {
+            background: rgba(25,85,36,0.12);
+            border-radius: var(--r-full);
+        }
+
+        /* -- Welcome -- */
+        .welcome {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 48vh;
+            gap: 1.3rem;
+        }
+        .welcome-text {
+            text-align: center;
+            color: var(--text-2);
+            font-family: 'Clash Display', 'General Sans', sans-serif;
+            font-size: 1.7rem;
+            font-weight: 500;
+            line-height: 1.4;
+            max-width: 560px;
+            letter-spacing: -0.02em;
+        }
+        .welcome-text strong { color: var(--green-dark); font-weight: 600; }
+        .hero-number {
+            font-family: 'Clash Display', 'General Sans', sans-serif;
+            font-size: 4.2rem;
+            font-weight: 700;
+            color: var(--green-dark);
+            line-height: 1;
+            letter-spacing: -0.05em;
+            vertical-align: baseline;
+            margin-right: 0.1em;
+            display: inline-block;
+            transition: transform 0.3s ease, color 0.3s ease;
+        }
+        .hero-number.bump {
+            animation: number-bump 0.6s ease;
+        }
+        @keyframes number-bump {
+            0% { transform: scale(1); }
+            25% { transform: scale(1.1); color: #16a34a; }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .welcome-sub {
+            text-align: center;
+            color: var(--text-3);
+            font-size: 0.82rem;
+            line-height: 1.6;
+            max-width: 400px;
+        }
+        .sug-label {
+            font-family: 'Clash Grotesk', 'General Sans', sans-serif;
+            font-size: 0.6rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            color: var(--text-3);
+        }
+        .suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.45rem;
+            max-width: 520px;
+        }
+        .sug-chip {
+            background: var(--glass);
+            backdrop-filter: blur(16px) saturate(200%);
+            -webkit-backdrop-filter: blur(16px) saturate(200%);
+            border: 1.5px solid rgba(255,255,255,0.80);
+            border-radius: var(--r-full);
+            padding: 0.52rem 1.15rem;
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: var(--text-2);
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.22,1,0.36,1);
+            user-select: none;
+            box-shadow: var(--shadow-sm), var(--shine-top);
+            position: relative;
+            overflow: hidden;
+        }
+        .sug-chip::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -75%;
+            width: 50%; height: 100%;
+            background: linear-gradient(120deg, transparent, rgba(255,255,255,0.6), transparent);
+            transition: left 0.5s ease;
+        }
+        .sug-chip:hover::before { left: 125%; }
+        .sug-chip:hover {
+            background: var(--glass-green);
+            border-color: var(--border-green);
+            color: var(--green-dark);
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-glow), var(--shine-top);
+        }
+        .sug-chip:active { transform: translateY(0) scale(0.97); }
+
+        /* -- Messages -- */
+        .msg-row {
+            display: flex;
+            margin-bottom: 0.7rem;
+            animation: msgIn 0.4s cubic-bezier(0.22,1,0.36,1) both;
+        }
+        .msg-row.user { justify-content: flex-end; }
+        .msg-row.bot { justify-content: flex-start; }
+
+        .msg {
+            max-width: 82%;
+            padding: 0.9rem 1.2rem;
+            border-radius: var(--r);
+            line-height: 1.7;
+            font-size: 0.9rem;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .msg:hover { transform: translateY(-1px); }
+
+        .msg.user-msg {
+            background: var(--user-grad);
+            color: #f0fdf4;
+            border-bottom-right-radius: 6px;
+            box-shadow: 0 4px 16px rgba(25,85,36,0.20), 0 1px 3px rgba(35,122,52,0.12), inset 0 1px 0 rgba(255,255,255,0.15);
+            font-weight: 500;
+            font-size: 0.9rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .msg.user-msg::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 45%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.12) 0%, transparent 100%);
+            border-radius: inherit;
+            pointer-events: none;
+        }
+        .msg.user-msg:hover {
+            box-shadow: 0 8px 28px rgba(25,85,36,0.28), 0 2px 6px rgba(35,122,52,0.16), inset 0 1px 0 rgba(255,255,255,0.15);
+        }
+
+        .msg.bot-msg {
+            background: var(--glass);
+            backdrop-filter: blur(18px) saturate(200%);
+            -webkit-backdrop-filter: blur(18px) saturate(200%);
+            border: 1.5px solid rgba(255,255,255,0.80);
+            border-bottom-left-radius: 6px;
+            box-shadow: var(--shadow-md), var(--shine-top);
+            color: var(--text-1);
+            position: relative;
+            overflow: hidden;
+        }
+        .msg.bot-msg::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 50%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, transparent 100%);
+            border-radius: inherit;
+            pointer-events: none;
+        }
+        .msg.bot-msg:hover { box-shadow: var(--shadow-lg), var(--shine-top); }
+
+        /* Bot markdown */
+        .msg.bot-msg h1, .msg.bot-msg h2, .msg.bot-msg h3 {
+            font-family: 'Clash Display', 'General Sans', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin: 0.7rem 0 0.25rem;
+            color: var(--text-1);
+        }
+        .msg.bot-msg h1:first-child, .msg.bot-msg h2:first-child, .msg.bot-msg h3:first-child { margin-top: 0; }
+        .msg.bot-msg p { margin: 0.35rem 0; }
+        .msg.bot-msg strong { color: var(--green-dark); font-weight: 600; }
+        .msg.bot-msg em { color: var(--text-2); }
+        .msg.bot-msg ul, .msg.bot-msg ol { padding-left: 1.1rem; margin: 0.3rem 0; }
+        .msg.bot-msg li { margin: 0.15rem 0; }
+        .msg.bot-msg blockquote {
+            border-left: 3px solid var(--green-dark);
+            background: rgba(193,220,200,0.22);
+            padding: 0.65rem 1rem;
+            border-radius: 0 var(--r-sm) var(--r-sm) 0;
+            margin: 0.6rem 0;
+            font-style: italic;
+            color: var(--text-2);
+            font-size: 0.88rem;
+            line-height: 1.65;
+            position: relative;
+        }
+        .msg.bot-msg blockquote::before {
+            content: '\201C';
+            position: absolute;
+            top: -0.1rem;
+            left: 0.4rem;
+            font-size: 1.6rem;
+            color: var(--green-dark);
+            opacity: 0.25;
+            font-style: normal;
+            line-height: 1;
+        }
+        .msg.bot-msg blockquote p { margin: 0.2rem 0; }
+        .msg.bot-msg code {
+            background: var(--green-soft);
+            color: var(--green-dark);
+            padding: 0.12rem 0.4rem;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+        .msg.bot-msg a {
+            color: var(--green-dark);
+            text-decoration: none;
+            border-bottom: 1px solid rgba(25,85,36,0.25);
+            transition: border-color 0.2s;
+        }
+        .msg.bot-msg a:hover { border-bottom-color: var(--green-dark); }
+
+        @keyframes msgIn {
+            from { opacity: 0; transform: translateY(12px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* -- Source Citations -- */
+        .source-cards {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            max-width: 82%;
+        }
+        .source-card {
+            background: var(--glass-subtle);
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+            border: 1px solid rgba(193,220,200,0.50);
+            border-radius: var(--r-sm);
+            padding: 0.55rem 0.75rem;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.22,1,0.36,1);
+            max-width: 280px;
+            min-width: 180px;
+            flex: 1 1 200px;
+            position: relative;
+            overflow: hidden;
+        }
+        .source-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 50%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.30) 0%, transparent 100%);
+            border-radius: inherit;
+            pointer-events: none;
+        }
+        .source-card:hover {
+            border-color: var(--border-green);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-glow);
+            background: var(--glass-green);
+        }
+        .source-card-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.4rem;
+            margin-bottom: 0.3rem;
+            min-width: 0;
+        }
+        .source-card-episode {
+            font-family: 'Clash Display', 'General Sans', sans-serif;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text-1);
+            letter-spacing: -0.01em;
+            line-height: 1.3;
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            flex: 1;
+            min-width: 0;
+        }
+        .source-card-podcast {
+            font-size: 0.62rem;
+            color: var(--text-3);
+            font-weight: 500;
+            margin-bottom: 0.2rem;
+        }
+        .source-card-timestamp {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
+            background: var(--glass-green);
+            border: 1px solid var(--border-green);
+            border-radius: var(--r-full);
+            padding: 0.1rem 0.4rem;
+            font-size: 0.58rem;
+            font-weight: 600;
+            color: var(--green-dark);
+            flex-shrink: 0;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+        .source-card-excerpt {
+            font-size: 0.68rem;
+            color: var(--text-3);
+            line-height: 1.45;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .source-label {
+            font-size: 0.6rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-3);
+            margin-bottom: 0.35rem;
+            margin-top: 0.15rem;
+        }
+
+        /* -- Typing -- */
+        .typing-wrap {
+            display: flex;
+            gap: 5px;
+            padding: 0.85rem 1.1rem;
+            align-items: center;
+        }
+        .typing-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--green-dark);
+            animation: bounce 1.4s ease-in-out infinite;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.15s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.3s; }
+        @keyframes bounce {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.25; }
+            30% { transform: translateY(-7px); opacity: 1; }
+        }
+
+        /* -- Input Bar -- */
+        .input-bar {
+            flex-shrink: 0;
+            padding: 0.5rem 0 max(1.4rem, env(safe-area-inset-bottom));
+            max-width: 960px;
+            margin-left: auto;
+            margin-right: auto;
+            width: 100%;
+        }
+        .input-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--glass-green-strong);
+            backdrop-filter: blur(24px) saturate(200%);
+            -webkit-backdrop-filter: blur(24px) saturate(200%);
+            border: 1.5px solid rgba(193,220,200,0.60);
+            border-radius: 18px;
+            box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255,255,255,0.7), inset 0 -1px 0 rgba(193,220,200,0.3);
+            padding: 0.45rem 0.55rem 0.45rem 1.15rem;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .input-wrap::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 50%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.55) 0%, transparent 100%);
+            border-radius: inherit;
+            pointer-events: none;
+        }
+        .input-wrap:focus-within {
+            border-color: rgba(25,85,36,0.35);
+            box-shadow: 0 8px 32px rgba(25,85,36,0.12), 0 2px 8px rgba(25,85,36,0.08), inset 0 1px 0 rgba(255,255,255,0.7);
+        }
+        .input-wrap input {
+            flex: 1;
+            background: none;
+            border: none;
+            outline: none;
+            font-family: inherit;
+            font-size: 0.9rem;
+            color: var(--text-1);
+            padding: 0.5rem 0;
+            caret-color: var(--green-dark);
+        }
+        .input-wrap input::placeholder { color: rgba(25,85,36,0.35); }
+        .kbd-hint {
+            font-size: 0.58rem;
+            font-weight: 600;
+            color: var(--text-3);
+            opacity: 0.5;
+            background: rgba(0,0,0,0.04);
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 4px;
+            padding: 0.12rem 0.35rem;
+            flex-shrink: 0;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            position: relative;
+            z-index: 1;
+        }
+        .send-btn {
+            width: 40px; height: 40px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, #195524 0%, #237a34 100%);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.25s cubic-bezier(0.22,1,0.36,1);
+            flex-shrink: 0;
+            box-shadow: 0 3px 12px rgba(25,85,36,0.25), inset 0 1px 0 rgba(255,255,255,0.18);
+            position: relative;
+            z-index: 1;
+        }
+        .send-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 22px rgba(25,85,36,0.35), inset 0 1px 0 rgba(255,255,255,0.18);
+        }
+        .send-btn:active:not(:disabled) { transform: translateY(0) scale(0.95); }
+        .send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .send-btn svg { width: 16px; height: 16px; }
+
+        /* -- Empty state -- */
+        .empty-card {
+            background: var(--glass);
+            backdrop-filter: blur(18px) saturate(200%);
+            -webkit-backdrop-filter: blur(18px) saturate(200%);
+            border: 1.5px solid rgba(255,255,255,0.80);
+            border-radius: var(--r);
+            box-shadow: var(--shadow-md), var(--shine-top);
+            padding: 2rem 1.8rem;
+            text-align: center;
+            max-width: 400px;
+            position: relative;
+            overflow: hidden;
+        }
+        .empty-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 50%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, transparent 100%);
+            border-radius: inherit;
+            pointer-events: none;
+        }
+        .empty-card p { color: var(--text-2); font-size: 0.86rem; line-height: 1.7; }
+        .empty-card code {
+            background: var(--green-soft);
+            color: var(--green-dark);
+            padding: 0.15rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+
+        /* -- Skeleton loaders -- */
+        .skeleton {
+            background: linear-gradient(90deg, rgba(0,0,0,0.04) 25%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.04) 75%);
+            background-size: 200% 100%;
+            animation: skeleton-pulse 1.5s ease-in-out infinite;
+            border-radius: var(--r-sm);
+        }
+        @keyframes skeleton-pulse {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        .skeleton-card {
+            border-radius: var(--r-sm);
+            overflow: hidden;
+            border: 1.5px solid rgba(255,255,255,0.80);
+        }
+        .skeleton-card .skeleton-thumb {
+            width: 100%;
+            aspect-ratio: 1;
+        }
+        .skeleton-card .skeleton-title {
+            height: 0.8rem;
+            margin: 0.65rem 0.75rem 0.4rem;
+            width: 70%;
+        }
+        .skeleton-card .skeleton-title-short {
+            height: 0.8rem;
+            margin: 0 0.75rem 0.75rem;
+            width: 45%;
+        }
+        .skeleton-text-lg {
+            height: 1.8rem;
+            width: 60%;
+            margin-bottom: 0.6rem;
+        }
+        .skeleton-text-md {
+            height: 0.9rem;
+            width: 80%;
+            margin-bottom: 0.4rem;
+        }
+        .skeleton-text-sm {
+            height: 0.7rem;
+            width: 50%;
+        }
+
+        /* -- Episode not found -- */
+        .not-found {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 48vh;
+            gap: 1rem;
+            text-align: center;
+        }
+        .not-found-title {
+            font-family: 'Clash Display', 'General Sans', sans-serif;
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--text-1);
+            letter-spacing: -0.02em;
+        }
+        .not-found-text {
+            color: var(--text-3);
+            font-size: 0.85rem;
+        }
+
+        /* -- Library -- */
+        .library-page {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 1rem 0 0.5rem;
+            scroll-behavior: smooth;
+        }
+        .library-page::-webkit-scrollbar { width: 4px; }
+        .library-page::-webkit-scrollbar-track { background: transparent; }
+        .library-page::-webkit-scrollbar-thumb {
+            background: rgba(25,85,36,0.12);
+            border-radius: var(--r-full);
+        }
+        .podcast-folders {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            padding: 0.5rem 0;
+        }
+        .podcast-folder {
+            background: var(--glass);
+            backdrop-filter: blur(16px) saturate(200%);
+            -webkit-backdrop-filter: blur(16px) saturate(200%);
+            border: 1.5px solid rgba(255,255,255,0.80);
+            border-radius: var(--r);
+            box-shadow: var(--shadow-sm), var(--shine-top);
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.22,1,0.36,1);
+            overflow: hidden;
+            position: relative;
+            padding: 1.4rem 1.2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 0.7rem;
+        }
+        .podcast-folder::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 50%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.35) 0%, transparent 100%);
+            border-radius: inherit;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .podcast-folder:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg), var(--shine-top);
+            border-color: var(--border-green);
+        }
+        .podcast-folder:active { transform: translateY(0) scale(0.97); }
+        .podcast-folder-thumb {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 14px;
+            background: linear-gradient(135deg, var(--glass-green) 0%, var(--glass-subtle) 100%);
+        }
+        .podcast-folder-placeholder {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--glass-green) 0%, var(--glass-subtle) 100%);
+            font-size: 2.4rem;
+        }
+        .podcast-folder-name {
+            font-family: 'Clash Display', 'General Sans', sans-serif;
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--text-1);
+            letter-spacing: -0.02em;
+            line-height: 1.35;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .podcast-folder-count {
+            font-size: 0.68rem;
+            font-weight: 600;
+            color: var(--text-3);
+            background: var(--glass-green);
+            padding: 0.15rem 0.55rem;
+            border-radius: var(--r-full);
+            border: 1px solid var(--border-green);
+        }
+        .podcast-dir {
+            margin-bottom: 1.5rem;
+        }
+        .podcast-dir-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: var(--glass-green);
+            backdrop-filter: blur(12px);
+            border: 1.5px solid var(--border-green);
+            border-radius: var(--r-full);
+            padding: 0.35rem 0.85rem;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--green-dark);
+            cursor: pointer;
+            transition: all 0.25s ease;
+            margin-bottom: 1rem;
+        }
+        .podcast-dir-back:hover {
+            background: var(--glass-green-strong);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-glow);
+        }
+        .podcast-dir-header {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+            margin-bottom: 0.8rem;
+        }
+        .podcast-dir-header h2 {
+            font-family: 'Clash Display', 'General Sans', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: var(--text-1);
+            letter-spacing: -0.03em;
+        }
+        .podcast-dir-header .ep-count {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-3);
+            background: var(--glass-green);
+            padding: 0.15rem 0.55rem;
+            border-radius: var(--r-full);
+            border: 1px solid var(--border-green);
+        }
+        .library-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+            gap: 1.1rem;
+        }
+        .episode-card {
+            background: var(--glass);
+            backdrop-filter: blur(16px) saturate(200%);
+            -webkit-backdrop-filter: blur(16px) saturate(200%);
+            border: 1.5px solid rgba(255,255,255,0.80);
+            border-radius: var(--r-sm);
+            box-shadow: var(--shadow-sm), var(--shine-top);
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.22,1,0.36,1);
+            overflow: hidden;
+            position: relative;
+        }
+        .episode-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 50%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.35) 0%, transparent 100%);
+            border-radius: inherit;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .episode-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg), var(--shine-top);
+            border-color: var(--border-green);
+        }
+        .episode-card:active { transform: translateY(0) scale(0.97); }
+        .episode-card-thumb {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            display: block;
+            background: var(--glass-green);
+        }
+        .placeholder-thumb {
+            width: 100%;
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--glass-green) 0%, var(--glass-subtle) 100%);
+            font-size: 2.2rem;
+        }
+        .episode-card-title {
+            padding: 0.65rem 0.75rem 0.75rem;
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: var(--text-2);
+            line-height: 1.45;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* -- Scoped Chat Header -- */
+        .scoped-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            background: var(--glass);
+            backdrop-filter: blur(16px) saturate(200%);
+            -webkit-backdrop-filter: blur(16px) saturate(200%);
+            border: 1.5px solid rgba(255,255,255,0.80);
+            border-radius: var(--r);
+            box-shadow: var(--shadow-md), var(--shine-top);
+            padding: 0.65rem 1rem;
+            margin-bottom: 0.8rem;
+            flex-shrink: 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .scoped-header::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 50%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, transparent 100%);
+            border-radius: inherit;
+            pointer-events: none;
+        }
+        .scoped-header-thumb {
+            width: 48px;
+            height: 48px;
+            border-radius: 10px;
+            object-fit: cover;
+            flex-shrink: 0;
+            box-shadow: var(--shadow-sm);
+        }
+        .scoped-header-placeholder {
+            width: 48px;
+            height: 48px;
+            border-radius: 10px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--glass-green) 0%, var(--glass-subtle) 100%);
+            font-size: 1.4rem;
+        }
+        .scoped-header-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .scoped-header-title {
+            font-family: 'Clash Display', 'General Sans', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-1);
+            letter-spacing: -0.02em;
+            line-height: 1.35;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .scoped-header-podcast {
+            font-size: 0.7rem;
+            color: var(--text-3);
+            font-weight: 500;
+        }
+        .back-btn {
+            background: var(--glass-green);
+            backdrop-filter: blur(12px);
+            border: 1.5px solid var(--border-green);
+            border-radius: var(--r-full);
+            padding: 0.35rem 0.85rem;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--green-dark);
+            cursor: pointer;
+            transition: all 0.25s ease;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 1;
+        }
+        .back-btn:hover {
+            background: var(--glass-green-strong);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-glow);
+        }
+
+        /* -- Crawler Panel -- */
+
+        .crawler-panel {
+            flex-shrink: 0;
+            margin-top: auto;
+        }
+        .crawler-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            width: 100%;
+            padding: 0.5rem 0.8rem;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.72rem;
+            color: var(--text-3);
+            transition: color 0.2s;
+        }
+        .crawler-toggle:hover { color: var(--text-2); }
+        .live-dot {
+            width: 8px; height: 8px;
+            background: #22c55e;
+            border-radius: 50%;
+            flex-shrink: 0;
+            animation: pulse-live 1.5s ease-in-out infinite;
+            box-shadow: 0 0 6px rgba(34, 197, 94, 0.5);
+        }
+        @keyframes pulse-live {
+            0%, 100% { opacity: 1; box-shadow: 0 0 6px rgba(34, 197, 94, 0.5); }
+            50% { opacity: 0.4; box-shadow: 0 0 12px rgba(34, 197, 94, 0.8); }
+        }
+        .idle-dot {
+            width: 8px; height: 8px;
+            background: var(--text-3);
+            border-radius: 50%;
+            flex-shrink: 0;
+            opacity: 0.4;
+        }
+        .crawler-status-text {
+            flex: 1;
+            text-align: left;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+        .crawler-chevron {
+            font-size: 0.55rem;
+            opacity: 0.5;
+        }
+        .crawler-log {
+            max-height: 220px;
+            overflow-y: auto;
+            padding: 0.4rem 0.8rem 0.5rem;
+            border-top: 1px solid rgba(0,0,0,0.04);
+        }
+        .crawler-log::-webkit-scrollbar { width: 3px; }
+        .crawler-log::-webkit-scrollbar-thumb {
+            background: rgba(25,85,36,0.12);
+            border-radius: var(--r-full);
+        }
+        /* Pipeline visualization */
+        .pipeline-row {
+            display: flex;
+            align-items: center;
+            gap: 0.2rem;
+            padding: 0.5rem 0 0.6rem;
+            flex-wrap: wrap;
+        }
+        .pipeline-stage {
+            font-size: 0.62rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            padding: 0.18rem 0.5rem;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.03);
+            color: var(--text-3);
+        }
+        .pipeline-stage.completed {
+            background: rgba(34, 197, 94, 0.1);
+            color: #16a34a;
+        }
+        .pipeline-stage.active {
+            background: rgba(34, 197, 94, 0.15);
+            color: #16a34a;
+            animation: pulse-live 1.5s ease-in-out infinite;
+        }
+        .pipeline-arrow { color: var(--text-3); font-size: 0.55rem; opacity: 0.4; }
+        /* Event log */
+        .crawler-event {
+            display: flex;
+            align-items: baseline;
+            gap: 0.4rem;
+            padding: 0.2rem 0;
+            font-size: 0.7rem;
+            font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+        }
+        .event-phase {
+            font-weight: 600;
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            padding: 0.1rem 0.35rem;
+            border-radius: 3px;
+            flex-shrink: 0;
+            min-width: 68px;
+            text-align: center;
+        }
+        .event-phase.discovery { background: rgba(59,130,246,0.1); color: #3b82f6; }
+        .event-phase.fetching { background: rgba(168,85,247,0.1); color: #a855f7; }
+        .event-phase.transcribing { background: rgba(234,179,8,0.1); color: #ca8a04; }
+        .event-phase.chunking { background: rgba(249,115,22,0.1); color: #ea580c; }
+        .event-phase.embedding { background: rgba(236,72,153,0.1); color: #db2777; }
+        .event-phase.saving { background: rgba(20,184,166,0.1); color: #0d9488; }
+        .event-phase.done, .event-phase.complete { background: rgba(34,197,94,0.1); color: #16a34a; }
+        .event-phase.error { background: rgba(239,68,68,0.1); color: #dc2626; }
+        .event-icon { flex-shrink: 0; font-style: normal; width: 1.1rem; text-align: center; }
+        .event-episode {
+            color: var(--text-2);
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .crawler-event.ev-done .event-episode { color: #16a34a; }
+        .crawler-event.ev-complete { opacity: 0.7; font-style: italic; }
+        .event-message { color: var(--text-3); }
+        .crawler-branding {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            padding: 0.3rem 0 0.6rem;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+        .crawler-branding:hover { opacity: 1; }
+        .crawler-branding img { width: 16px; height: 16px; border-radius: 4px; }
+        .crawler-branding a {
+            font-size: 0.62rem;
+            font-weight: 500;
+            color: var(--text-3);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .crawler-branding a:hover { color: var(--green-dark); }
+
+        /* -- Responsive -- */
+        @media (max-width: 640px) {
+            .app { padding: 0 0.8rem; }
+        }
+
+        /* -- Suppress hover effects on touch devices -- */
+        @media (hover: none) {
+            .podcast-folder:hover { transform: none; box-shadow: var(--shadow-sm), var(--shine-top); }
+            .episode-card:hover { transform: none; box-shadow: var(--shadow-sm), var(--shine-top); }
+            .sug-chip:hover { transform: none; }
+            .nav-link:hover { transform: none; }
+            .msg:hover { transform: none; }
+            .source-card:hover { transform: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="orb orb-4"></div>
+    <div id="root"></div>
+
+    <!-- Pinned versions: floating @18 silently ships breaking changes. -->
+    <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js" crossorigin="anonymous"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        const SUGGESTIONS = [
+            "What is product-market fit?",
+            "How do top PMs think about growth?",
+            "Best hiring advice from founders",
+            "How to build a product strategy",
+            "What makes a great PM?",
+            "Lessons from scaling startups",
+        ];
+
+        const EPISODE_SUGGESTIONS = [
+            "Summarize this episode",
+            "What are the key takeaways?",
+            "What advice was given?",
+            "What frameworks were discussed?",
+        ];
+
+        function formatTimestamp(seconds) {
+            if (seconds == null) return null;
+            const s = Math.floor(seconds);
+            const m = Math.floor(s / 60);
+            const sec = s % 60;
+            if (m >= 60) {
+                const h = Math.floor(m / 60);
+                const rm = m % 60;
+                return h + ':' + String(rm).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+            }
+            return m + ':' + String(sec).padStart(2, '0');
+        }
+
+        function useHashRouter() {
+            const getRoute = useCallback(() => {
+                const hash = window.location.hash || '#/';
+                if (hash.startsWith('#/episode/')) {
+                    return { page: 'episode', episodeId: hash.slice('#/episode/'.length) };
+                }
+                if (hash === '#/library') {
+                    return { page: 'library' };
+                }
+                return { page: 'home' };
+            }, []);
+
+            const [route, setRoute] = useState(getRoute);
+
+            useEffect(() => {
+                const onChange = () => setRoute(getRoute());
+                window.addEventListener('hashchange', onChange);
+                return () => window.removeEventListener('hashchange', onChange);
+            }, [getRoute]);
+
+            const navigate = useCallback((hash) => {
+                window.location.hash = hash;
+            }, []);
+
+            return { route, navigate };
+        }
+
+        const SendIcon = () => (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+        );
+
+        function Typing() {
+            return (
+                <div className="msg-row bot" style={{ animation: 'msgIn 0.3s ease both' }}>
+                    <div className="msg bot-msg">
+                        <div className="typing-wrap">
+                            <div className="typing-dot" />
+                            <div className="typing-dot" />
+                            <div className="typing-dot" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function SourceCards({ sources, navigate }) {
+            if (!sources || sources.length === 0) return null;
+            return (
+                <div className="source-cards" style={{ animation: 'msgIn 0.4s ease both' }}>
+                    <div className="source-label">Sources — click to chat with episode</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', width: '100%' }}>
+                        {sources.map((src, i) => (
+                            <div
+                                key={i}
+                                className="source-card"
+                                onClick={() => navigate('#/episode/' + src.episode_id)}
+                            >
+                                <div className="source-card-header">
+                                    <span className="source-card-episode">{src.episode_title}</span>
+                                    {src.start_time != null && (
+                                        <span className="source-card-timestamp">{formatTimestamp(src.start_time)}</span>
+                                    )}
+                                </div>
+                                {src.podcast_title && (
+                                    <div className="source-card-podcast">{src.podcast_title}</div>
+                                )}
+                                {src.text && (
+                                    <div className="source-card-excerpt">
+                                        {src.text.length > 150 ? src.text.substring(0, 150) + '...' : src.text}
+                                    </div>
+                                )}
+                                <div style={{
+                                    fontSize: '0.6rem', fontWeight: 600, color: 'var(--green-dark)',
+                                    marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.2rem'
+                                }}>
+                                    Chat with episode <span style={{ fontSize: '0.7rem' }}>→</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        function BotMessage({ content, sources, navigate }) {
+            // Sanitize: marked renders markdown (which may contain raw HTML), DOMPurify
+            // strips anything dangerous (scripts, event handlers, javascript: URLs).
+            const html = DOMPurify.sanitize(marked.parse(content, { breaks: true }));
+            return (
+                <div>
+                    <div className="msg-row bot">
+                        <div className="msg bot-msg" dangerouslySetInnerHTML={{ __html: html }} />
+                    </div>
+                    <SourceCards sources={sources} navigate={navigate} />
+                </div>
+            );
+        }
+
+        function UserMessage({ content }) {
+            return (
+                <div className="msg-row user">
+                    <div className="msg user-msg">{content}</div>
+                </div>
+            );
+        }
+
+        function WelcomeSkeleton() {
+            return (
+                <div className="welcome">
+                    <div className="skeleton skeleton-text-lg" style={{ borderRadius: '12px' }}></div>
+                    <div className="skeleton skeleton-text-md" style={{ borderRadius: '8px' }}></div>
+                    <div className="skeleton skeleton-text-sm" style={{ borderRadius: '8px' }}></div>
+                </div>
+            );
+        }
+
+        function Welcome({ onSuggest, episodeCount, crawlerActive }) {
+            const [bump, setBump] = useState(false);
+            const prevCount = useRef(episodeCount);
+
+            useEffect(() => {
+                if (episodeCount !== prevCount.current && prevCount.current > 0) {
+                    setBump(true);
+                    const t = setTimeout(() => setBump(false), 700);
+                    prevCount.current = episodeCount;
+                    return () => clearTimeout(t);
+                }
+                prevCount.current = episodeCount;
+            }, [episodeCount]);
+
+            if (episodeCount === null) return <WelcomeSkeleton />;
+            if (episodeCount === 0) {
+                return (
+                    <div className="welcome">
+                        <div className="empty-card">
+                            <p>
+                                Your podcast library is being built.<br /><br />
+                                Episodes will appear as they're processed.
+                            </p>
+                        </div>
+                    </div>
+                );
+            }
+            return (
+                <div className="welcome">
+                    <p className="welcome-text">
+                        <span className={`hero-number${bump ? ' bump' : ''}`}>{episodeCount}</span> episodes of product wisdom,{' '}
+                        <span style={{whiteSpace: 'nowrap'}}><strong>finally searchable.</strong></span>
+                    </p>
+                    <span className="badge" style={{ marginTop: '0.4rem' }}>
+                        {crawlerActive && <span className="live-dot" style={{width:7,height:7,display:'inline-block',marginRight:6,verticalAlign:'middle'}} />}
+                        {episodeCount} episodes{crawlerActive ? ' · 1 more adding' : ' indexed'}
+                    </span>
+                    <span className="sug-label">Try asking about</span>
+                    <div className="suggestions">
+                        {SUGGESTIONS.map((s, i) => (
+                            <button key={i} className="sug-chip" onClick={() => onSuggest(s)}>{s}</button>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        function EpisodeWelcome({ onSuggest, episode }) {
+            return (
+                <div className="welcome" style={{ minHeight: '30vh' }}>
+                    <p className="welcome-text" style={{ fontSize: '1.4rem' }}>
+                        Deep dive into <strong>{episode.title}</strong>.
+                    </p>
+                    <div className="empty-card" style={{ padding: '1.2rem 1.5rem', maxWidth: '340px' }}>
+                        <p style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--green-dark)' }}>
+                            Ask anything about this episode
+                        </p>
+                    </div>
+                    <span className="sug-label">Try asking</span>
+                    <div className="suggestions">
+                        {EPISODE_SUGGESTIONS.map((s, i) => (
+                            <button key={i} className="sug-chip" onClick={() => onSuggest(s)}>{s}</button>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        function ScopedHeader({ episode, onBack }) {
+            return (
+                <div className="scoped-header">
+                    {episode.image_url ? (
+                        <img className="scoped-header-thumb" src={episode.image_url} alt="" />
+                    ) : (
+                        <div className="scoped-header-placeholder">🎙</div>
+                    )}
+                    <div className="scoped-header-info">
+                        <div className="scoped-header-title">{episode.title}</div>
+                        <div className="scoped-header-podcast">{episode.podcast_title}</div>
+                    </div>
+                    <button className="back-btn" onClick={onBack}>Back</button>
+                </div>
+            );
+        }
+
+        function SkeletonCards({ count }) {
+            return (
+                <div className="library-grid">
+                    {Array.from({ length: count }).map((_, i) => (
+                        <div key={i} className="skeleton-card">
+                            <div className="skeleton skeleton-thumb"></div>
+                            <div className="skeleton skeleton-title"></div>
+                            <div className="skeleton skeleton-title-short"></div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        function EpisodeDetailSkeleton() {
+            return (
+                <div style={{ padding: '1rem 0' }}>
+                    <div className="scoped-header" style={{ opacity: 0.5 }}>
+                        <div className="skeleton" style={{ width: 48, height: 48, borderRadius: 10, flexShrink: 0 }}></div>
+                        <div style={{ flex: 1 }}>
+                            <div className="skeleton" style={{ height: '0.85rem', width: '60%', marginBottom: '0.4rem', borderRadius: 6 }}></div>
+                            <div className="skeleton" style={{ height: '0.7rem', width: '35%', borderRadius: 6 }}></div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function LibraryPage({ navigate }) {
+            const [data, setData] = useState(null);
+            const [error, setError] = useState(null);
+            const [openPodcast, setOpenPodcast] = useState(null);
+
+            const loadLibrary = (signal) => {
+                setError(null);
+                fetch('/api/library', { signal })
+                    .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+                    .then(d => setData(d))
+                    .catch(e => {
+                        if (e.name === 'AbortError') return;
+                        setError(e.message || 'Network error');
+                    });
+            };
+
+            useEffect(() => {
+                const controller = new AbortController();
+                loadLibrary(controller.signal);
+                return () => controller.abort();
+            }, []);
+
+            if (error) {
+                return (
+                    <div className="library-page page-fade-enter">
+                        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-2)' }}>
+                            <div style={{ marginBottom: '0.8rem' }}>Couldn't load library — {error}</div>
+                            <button onClick={() => loadLibrary()} style={{
+                                padding: '0.5rem 1rem', background: 'var(--green-dark)', color: 'white',
+                                border: 'none', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit'
+                            }}>Retry</button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (!data) {
+                return (
+                    <div className="library-page page-fade-enter">
+                        <div style={{ padding: '0.5rem 0' }}>
+                            <SkeletonCards count={6} />
+                        </div>
+                    </div>
+                );
+            }
+
+            if (data.podcasts.length === 0) {
+                return (
+                    <div className="library-page page-fade-enter">
+                        <div className="welcome">
+                            <div className="empty-card">
+                                <p>Your podcast library is being built. Episodes will appear as they're processed.</p>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // If a podcast folder is open, show its episodes
+            if (openPodcast) {
+                const podcast = data.podcasts.find(p => p.title === openPodcast);
+                if (!podcast) { setOpenPodcast(null); return null; }
+                return (
+                    <div className="library-page page-fade-enter">
+                        <div className="podcast-dir">
+                            <button className="podcast-dir-back" onClick={() => setOpenPodcast(null)}>
+                                ← All Podcasts
+                            </button>
+                            <div className="podcast-dir-header">
+                                <h2>{podcast.title}</h2>
+                                <span className="ep-count">{podcast.episodes.length} episode{podcast.episodes.length !== 1 ? 's' : ''}</span>
+                            </div>
+                            <div className="library-grid">
+                                {podcast.episodes.map((ep) => (
+                                    <div
+                                        key={ep.episode_id}
+                                        className="episode-card"
+                                        onClick={() => navigate('#/episode/' + ep.episode_id)}
+                                    >
+                                        {ep.image_url ? (
+                                            <img className="episode-card-thumb" src={ep.image_url} alt="" loading="lazy" />
+                                        ) : (
+                                            <div className="placeholder-thumb">🎙</div>
+                                        )}
+                                        <div className="episode-card-title">{ep.title}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            // Show podcast folders
+            return (
+                <div className="library-page page-fade-enter">
+                    <div className="podcast-folders">
+                        {data.podcasts.map((podcast) => (
+                            <div
+                                key={podcast.title}
+                                className="podcast-folder"
+                                onClick={() => setOpenPodcast(podcast.title)}
+                            >
+                                {podcast.image_url
+                                    ? <img className="podcast-folder-thumb" src={podcast.image_url} alt="" loading="lazy" />
+                                    : <div className="podcast-folder-placeholder">🎙</div>}
+                                <span className="podcast-folder-name">{podcast.title}</span>
+                                <span className="podcast-folder-count">{podcast.episodes.length} episode{podcast.episodes.length !== 1 ? 's' : ''}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        function ChatView({ episodeId, navigate, liveEpCount, crawlerActive }) {
+            const [messages, setMessages] = useState([]);
+            const [input, setInput] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [episode, setEpisode] = useState(null);
+            const [episodeError, setEpisodeError] = useState(false);
+            const [episodeLoading, setEpisodeLoading] = useState(false);
+            const endRef = useRef(null);
+            const inputRef = useRef(null);
+
+            useEffect(() => {
+                if (!episodeId) {
+                    setEpisode(null);
+                    setEpisodeError(false);
+                    setEpisodeLoading(false);
+                    return;
+                }
+                // AbortController prevents stale fetches from clobbering newer ones
+                // when the user navigates between episodes quickly.
+                const controller = new AbortController();
+                setEpisodeLoading(true);
+                setEpisodeError(false);
+                fetch('/api/episodes/' + episodeId, { signal: controller.signal })
+                    .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
+                    .then(d => { setEpisode(d); setEpisodeLoading(false); })
+                    .catch(err => {
+                        if (err.name === 'AbortError') return;  // navigation, not an error
+                        setEpisode(null); setEpisodeError(true); setEpisodeLoading(false);
+                    });
+                return () => controller.abort();
+            }, [episodeId]);
+
+            useEffect(() => {
+                endRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [messages, loading]);
+
+            // Reset messages when switching episodes
+            useEffect(() => {
+                setMessages([]);
+                setInput('');
+                setLoading(false);
+            }, [episodeId]);
+
+            // Cmd+K / Ctrl+K keyboard shortcut
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                        e.preventDefault();
+                        inputRef.current?.focus();
+                    }
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, []);
+
+            const send = async (text) => {
+                const q = (text || '').trim();
+                if (!q || loading) return;
+                setInput('');
+                setMessages(prev => [...prev, { role: 'user', content: q }]);
+                setLoading(true);
+                try {
+                    const body = { question: q };
+                    if (episodeId) body.episode_id = episodeId;
+                    const res = await fetch('/api/search', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body),
+                    });
+                    if (!res.ok) throw new Error('search failed');
+                    const data = await res.json();
+                    setMessages(prev => [...prev, { role: 'assistant', content: data.answer, sources: data.sources || [] }]);
+                } catch {
+                    setMessages(prev => [...prev, {
+                        role: 'assistant',
+                        content: 'Something went wrong searching the podcasts. Please try again.',
+                        sources: [],
+                    }]);
+                }
+                setLoading(false);
+                setTimeout(() => inputRef.current?.focus(), 80);
+            };
+
+            const onKey = (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); }
+            };
+
+            // Episode loading state
+            if (episodeId && episodeLoading) {
+                return (
+                    <div className="page-fade-enter">
+                        <EpisodeDetailSkeleton />
+                    </div>
+                );
+            }
+
+            // Episode not found state
+            if (episodeId && episodeError) {
+                return (
+                    <div className="page-fade-enter">
+                        <div className="not-found">
+                            <div className="not-found-title">Episode not found</div>
+                            <div className="not-found-text">This episode may have been removed or the link is incorrect.</div>
+                            <button className="back-btn" onClick={() => navigate('#/library')}>Back to Library</button>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (episodeId && !episode) return null;
+
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            const kbdHint = isMac ? '\u2318K' : 'Ctrl+K';
+
+            return (
+                <div className="page-fade-enter">
+                    {episodeId && episode && (
+                        <ScopedHeader episode={episode} onBack={() => navigate('#/library')} />
+                    )}
+
+                    <div className="chat-area">
+                        {messages.length === 0 && !loading ? (
+                            episodeId && episode ? (
+                                <EpisodeWelcome onSuggest={send} episode={episode} />
+                            ) : (
+                                <Welcome onSuggest={send} episodeCount={liveEpCount} crawlerActive={crawlerActive} />
+                            )
+                        ) : (
+                            <>
+                                {messages.map((m, i) =>
+                                    m.role === 'user'
+                                        ? <UserMessage key={i} content={m.content} />
+                                        : <BotMessage key={i} content={m.content} sources={m.sources} navigate={navigate} />
+                                )}
+                                {loading && <Typing />}
+                            </>
+                        )}
+                        <div ref={endRef} />
+                    </div>
+
+                    <div className="input-bar">
+                        <div className="input-wrap">
+                            <input
+                                ref={inputRef}
+                                type="text"
+                                aria-label={episodeId ? 'Ask about this episode' : 'Ask anything about the podcasts'}
+                                placeholder={loading ? "Searching..." : (episodeId ? "Ask about this episode..." : "Ask anything about the podcasts...")}
+                                value={input}
+                                onChange={e => setInput(e.target.value)}
+                                onKeyDown={onKey}
+                                disabled={loading}
+                                autoFocus
+                            />
+                            {!loading && !input && <span className="kbd-hint">{kbdHint}</span>}
+                            <button className="send-btn" aria-label="Send message" onClick={() => send(input)} disabled={!input.trim() || loading}>
+                                <SendIcon />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const SHOW_PHASES = new Set(['discovery', 'fetching', 'transcribing', 'embedding', 'saving', 'done', 'complete']);
+
+        function CrawlerPanel() {
+            const [status, setStatus] = useState(null);
+            const [events, setEvents] = useState([]);
+            const [open, setOpen] = useState(false);
+            const logRef = useRef(null);
+
+            // Fetch status once on mount to know if crawler is enabled
+            useEffect(() => {
+                fetch('/api/crawler/status')
+                    .then(r => r.json())
+                    .then(setStatus)
+                    .catch(() => setStatus({ enabled: false, active: false }));
+            }, []);
+
+            // Poll events + status every 5s — only when crawler is enabled AND
+            // the tab is visible. Pausing on visibilitychange saves CPU/battery
+            // and avoids hammering the server when no one is watching.
+            useEffect(() => {
+                if (!status?.enabled) return;
+                let id = null;
+                const poll = () => {
+                    if (document.visibilityState !== 'visible') return;
+                    fetch('/api/crawler/events').then(r => r.json()).then(d => {
+                        setEvents((d.events || []).filter(e => SHOW_PHASES.has(e.phase)));
+                    }).catch(() => {});
+                    fetch('/api/crawler/status').then(r => r.json()).then(setStatus).catch(() => {});
+                };
+                const start = () => { poll(); id = setInterval(poll, 5000); };
+                const stop = () => { if (id) { clearInterval(id); id = null; } };
+                const onVis = () => document.visibilityState === 'visible' ? start() : stop();
+                if (document.visibilityState === 'visible') start();
+                document.addEventListener('visibilitychange', onVis);
+                return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
+            }, [status?.enabled]);
+
+            // Auto-scroll log to bottom on new events
+            useEffect(() => {
+                if (open && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+            }, [events, open]);
+
+            const branding = (
+                <div className="crawler-branding">
+                    <span>Podcast Search — grounded answers from real podcast transcripts.</span>
+                </div>
+            );
+
+            // Production (enabled=false) or still loading — just branding
+            if (!status?.enabled) {
+                return <div className="crawler-panel">{branding}</div>;
+            }
+
+            // Local mode — show live crawler
+            const active = status.active;
+            const last = events.length > 0 ? events[events.length - 1] : null;
+            const statusText = active
+                ? (last?.episode ? last.episode.slice(0, 50) : 'Crawling...')
+                : events.length > 0 ? `Done — ${status.processed || 0} episodes indexed` : 'Ready';
+
+            return (
+                <div className="crawler-panel">
+                    <button className="crawler-toggle" aria-label={open ? 'Hide crawler activity' : 'Show crawler activity'} aria-expanded={open} onClick={() => setOpen(o => !o)}>
+                        {active ? <span className="live-dot" /> : <span className="idle-dot" />}
+                        <span className="crawler-status-text">{statusText}</span>
+                        <span className="crawler-chevron">{open ? '▲' : '▼'}</span>
+                    </button>
+                    {open && (
+                        <div className="crawler-log" ref={logRef}>
+                            {events.length === 0 ? (
+                                <div style={{ color: 'var(--text-3)', fontSize: '0.7rem', padding: '0.5rem 0' }}>
+                                    No activity yet
+                                </div>
+                            ) : events.slice(-50).map((ev, i) => (
+                                <div key={i} className={`crawler-event ev-${ev.phase}`}>
+                                    <span className={`event-phase ${ev.phase}`}>{ev.phase}</span>
+                                    {ev.episode && <span className="event-episode">{ev.episode.slice(0, 45)}</span>}
+                                    <span className="event-message">{ev.message}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {branding}
+                </div>
+            );
+        }
+
+        function App() {
+            const { route, navigate } = useHashRouter();
+            // Stale-while-revalidate: show last known count instantly from localStorage
+            const [epCount, setEpCount] = useState(() => {
+                try {
+                    const n = parseInt(localStorage.getItem('ep_count'), 10);
+                    return Number.isFinite(n) ? n : null;
+                } catch { return null; }
+            });
+
+            // Poll episode count every 30s to stay in sync. Pause when tab hidden.
+            useEffect(() => {
+                let id = null;
+                const poll = () => {
+                    if (document.visibilityState !== 'visible') return;
+                    fetch('/api/episodes/count').then(r => r.json()).then(d => {
+                        setEpCount(d.count);
+                        try { localStorage.setItem('ep_count', String(d.count)); } catch {}
+                    }).catch(() => {});
+                };
+                const start = () => { poll(); id = setInterval(poll, 30000); };
+                const stop = () => { if (id) { clearInterval(id); id = null; } };
+                const onVis = () => document.visibilityState === 'visible' ? start() : stop();
+                if (document.visibilityState === 'visible') start();
+                document.addEventListener('visibilitychange', onVis);
+                return () => { stop(); document.removeEventListener('visibilitychange', onVis); };
+            }, []);
+
+
+            return (
+                <div className="app">
+                    <div className="header">
+                        <div
+                            className="header-brand"
+                            role="button"
+                            tabIndex={0}
+                            aria-label="Go to home"
+                            onClick={() => navigate('#/')}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('#/'); } }}
+                        >
+                            <svg className="logo-icon" viewBox="0 0 440 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M 100 145 Q 100 45 220 38 Q 340 45 340 145" stroke="var(--green-dark)" strokeWidth="18" strokeLinecap="round"/>
+                                <rect x="68" y="118" width="50" height="68" rx="14" fill="var(--green-dark)"/>
+                                <rect x="74" y="124" width="38" height="56" rx="10" fill="#2A8F4E"/>
+                                <rect x="80" y="131" width="26" height="42" rx="7" fill="var(--green-dark)"/>
+                                <ellipse cx="93" cy="152" rx="10" ry="17" fill="#2A8F4E" opacity="0.4"/>
+                                <rect x="322" y="118" width="50" height="68" rx="14" fill="var(--green-dark)"/>
+                                <rect x="328" y="124" width="38" height="56" rx="10" fill="#2A8F4E"/>
+                                <rect x="334" y="131" width="26" height="42" rx="7" fill="var(--green-dark)"/>
+                                <ellipse cx="347" cy="152" rx="10" ry="17" fill="#2A8F4E" opacity="0.4"/>
+                                <circle cx="170" cy="155" r="42" stroke="var(--green-dark)" strokeWidth="8"/>
+                                <circle cx="170" cy="155" r="34" fill="var(--bg)"/>
+                                <circle cx="170" cy="155" r="34" stroke="var(--green-dark)" strokeWidth="3"/>
+                                <circle className="eye-pupil" cx="170" cy="155" r="22" fill="var(--green-dark)"/>
+                                <rect x="207" y="174" width="26" height="6" rx="3" fill="var(--green-dark)"/>
+                                <circle cx="270" cy="155" r="42" stroke="var(--green-dark)" strokeWidth="8"/>
+                                <circle cx="270" cy="155" r="34" fill="var(--bg)"/>
+                                <circle cx="270" cy="155" r="34" stroke="var(--green-dark)" strokeWidth="3"/>
+                                <circle className="eye-pupil" cx="270" cy="155" r="22" fill="var(--green-dark)"/>
+                            </svg>
+                            <h1>Podcast Search</h1>
+                        </div>
+                        <div className="header-right">
+                            <nav className="nav" aria-label="Main">
+                                <a
+                                    className={'nav-link' + (route.page === 'home' ? ' active' : '')}
+                                    href="#/"
+                                    aria-current={route.page === 'home' ? 'page' : undefined}
+                                    onClick={(e) => { e.preventDefault(); navigate('#/'); }}
+                                >Search</a>
+                                <a
+                                    className={'nav-link' + (route.page === 'library' || route.page === 'episode' ? ' active' : '')}
+                                    href="#/library"
+                                    aria-current={(route.page === 'library' || route.page === 'episode') ? 'page' : undefined}
+                                    onClick={(e) => { e.preventDefault(); navigate('#/library'); }}
+                                >Library</a>
+                            </nav>
+                        </div>
+                    </div>
+
+                    {route.page === 'library' ? (
+                        <>
+                            <LibraryPage navigate={navigate} />
+                            <div style={{ flexShrink: 0, height: '0.5rem' }} />
+                        </>
+                    ) : (
+                        <ChatView
+                            key={route.page === 'episode' ? route.episodeId : 'home'}
+                            episodeId={route.page === 'episode' ? route.episodeId : null}
+                            navigate={navigate}
+                            liveEpCount={epCount}
+                            crawlerActive={false}
+                        />
+                    )}
+
+                    <CrawlerPanel />
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
