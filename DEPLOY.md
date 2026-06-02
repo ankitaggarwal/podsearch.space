@@ -71,17 +71,28 @@ from outside via `https://podsearch.space/api/health`.
 
 ---
 
-## Deploying updates later
+## Deploying updates — pull-based (push to main = deploy)
 
-Push your changes to `main`, then on the server run:
+There is no CI/CD pushing to the server. Instead the **server pulls**: a cron runs
+[`auto-update.sh`](auto-update.sh), which checks `origin/main` and only rebuilds when
+it has actually moved. So shipping is just `git push` — the server picks up the new
+commit on its next tick (~1–2 min) and rolls the containers.
+
+Wire up the cron once:
+
+```bash
+chmod +x auto-update.sh
+crontab -e
+# add this line:
+*/2 * * * * /root/podsearch.space/auto-update.sh >> /var/log/podsearch-deploy.log 2>&1
+```
+
+To deploy by hand at any time (no waiting for cron):
 
 ```bash
 cd ~/podsearch.space
-./deploy.sh        # git reset --hard origin/main + rebuild + restart + prune
+./deploy.sh        # git pull + rebuild + restart + prune
 ```
-
-`.github/workflows/deploy.yml` can run this for you over SSH on every push to `main` —
-set the repo secrets `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PATH`.
 
 ## Handy commands
 
