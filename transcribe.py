@@ -59,6 +59,10 @@ AUDIO_CACHE_DIR    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "a
 CATALOG_TTL_SECS   = 120   # Re-sync episode catalog from PostgreSQL every 2 minutes
 POLL_INTERVAL = 10    # seconds between transcription job status polls
 JOB_TIMEOUT   = 3600  # max seconds to wait for a transcription job
+# A self-hosted gateway loads models on demand, so the FIRST submit after an idle
+# period (or a restart) can take well over a minute while the model warms up.
+# Keep this generous — a premature timeout just wastes the queued job.
+SUBMIT_TIMEOUT = 180  # seconds to wait for the /v1/transcribe-url submit to return 202
 
 
 class PodcastEngine:
@@ -716,7 +720,7 @@ class PodcastEngine:
         for attempt in range(3):
             try:
                 r = self._http.post(f"{LLM_BASE_URL}/v1/transcribe-url",
-                                    headers=headers, json={"url": submit_url}, timeout=60)
+                                    headers=headers, json={"url": submit_url}, timeout=SUBMIT_TIMEOUT)
                 if r.status_code == 202:
                     job_id = r.json()["job_id"]
                     logger.info("Transcription job: %s (audio=%s)", job_id, submit_url[-60:])
