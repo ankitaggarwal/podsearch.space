@@ -26,3 +26,6 @@ linkedin/
 
 # Scratch / local-only working files
 tmp/
+
+# Server-only deploy override (shared-droplet specifics)
+docker-compose.override.yml
