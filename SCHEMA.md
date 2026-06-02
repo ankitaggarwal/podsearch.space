@@ -5,6 +5,10 @@ is the source of truth for the catalog and the raw transcripts; Qdrant holds the
 chunk vectors used for retrieval. Every vector carries enough metadata to trace a
 match back to the exact episode and moment.
 
+Create the Postgres tables once with [`schema.sql`](schema.sql). The table names
+can be **prefixed** (set `DB_TABLE_PREFIX`) so several projects can share one
+database — see the note in `schema.sql`.
+
 ---
 
 ## PostgreSQL
@@ -22,6 +26,7 @@ refreshed on a 2-minute TTL), written once per episode at index time.
 | `audio_url` | `text` | resolved audio URL (used for dedup) |
 | `image_url` | `text` | episode/show artwork, if any |
 | `chunk_count` | `int` | number of chunks indexed for this episode |
+| `indexed_at` | `timestamptz` | set/updated when the episode is (re)indexed |
 
 Upsert is `ON CONFLICT (id) DO UPDATE` so re-indexing an episode is idempotent;
 `audio_url` is preserved if a later pass arrives without one.

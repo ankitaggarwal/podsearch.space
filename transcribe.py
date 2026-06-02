@@ -50,6 +50,7 @@ from config import (
     LLM_BASE_URL, LLM_API_KEY, LLM_MODEL,
     TEMP_AUDIO_DIR, LIVE_AUDIO_BASE_URL, OVERSIZE_BYTES,
     DEFAULT_PODCAST_URLS, SYSTEM_PROMPT, build_user_prompt, DATABASE_URL,
+    EPISODES_TABLE, TRANSCRIPTS_TABLE,
 )
 
 logger = logging.getLogger(__name__)
@@ -147,7 +148,7 @@ class PodcastEngine:
         """Load episode catalog from PostgreSQL. Called on startup and on TTL expiry."""
         try:
             with self._pg_cur() as cur:
-                cur.execute("SELECT id, title, podcast_title, image_url FROM podcast_episodes")
+                cur.execute(f"SELECT id, title, podcast_title, image_url FROM {EPISODES_TABLE}")
                 rows = cur.fetchall()
             self._episodes_cache = {
                 row[0]: {"title": row[1], "podcast_title": row[2], "image_url": row[3] or ""}
@@ -165,11 +166,11 @@ class PodcastEngine:
         """Insert or update episode record in podcast_episodes."""
         try:
             with self._pg_cur() as cur:
-                cur.execute("""
-                    INSERT INTO podcast_episodes (id, title, podcast_title, audio_url, image_url, chunk_count)
+                cur.execute(f"""
+                    INSERT INTO {EPISODES_TABLE} (id, title, podcast_title, audio_url, image_url, chunk_count)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET
-                        audio_url   = COALESCE(NULLIF(EXCLUDED.audio_url, ''), podcast_episodes.audio_url),
+                        audio_url   = COALESCE(NULLIF(EXCLUDED.audio_url, ''), {EPISODES_TABLE}.audio_url),
                         chunk_count = EXCLUDED.chunk_count,
                         indexed_at  = NOW()
                 """, (episode_id, title, podcast_title, audio_url, image_url, chunk_count))
@@ -217,7 +218,7 @@ class PodcastEngine:
         """Check if episode is indexed (PostgreSQL is source of truth)."""
         try:
             with self._pg_cur() as cur:
-                cur.execute("SELECT 1 FROM podcast_episodes WHERE id = %s", (episode_id,))
+                cur.execute(f"SELECT 1 FROM {EPISODES_TABLE} WHERE id = %s", (episode_id,))
                 return cur.fetchone() is not None
         except Exception as e:
             logger.warning("PG episode check failed for %s: %s", episode_id, e)
@@ -394,7 +395,7 @@ class PodcastEngine:
         """Retrieve full raw transcript segments from PostgreSQL podcast_transcripts."""
         try:
             with self._pg_cur() as cur:
-                cur.execute("SELECT segments FROM podcast_transcripts WHERE episode_id = %s", (episode_id,))
+                cur.execute(f"SELECT segments FROM {TRANSCRIPTS_TABLE} WHERE episode_id = %s", (episode_id,))
                 row = cur.fetchone()
             if row and row[0]:
                 return row[0] if isinstance(row[0], list) else json.loads(row[0])
@@ -767,7 +768,7 @@ class PodcastEngine:
         # Step 0: crash-recovery — reuse stored transcript if we have one
         try:
             with self._pg_cur() as cur:
-                cur.execute("SELECT segments FROM podcast_transcripts WHERE episode_id = %s", (ep_id,))
+                cur.execute(f"SELECT segments FROM {TRANSCRIPTS_TABLE} WHERE episode_id = %s", (ep_id,))
                 row = cur.fetchone()
             if row and row[0]:
                 logger.info("Using stored transcript: %s", episode_title[:50])
@@ -866,8 +867,8 @@ class PodcastEngine:
         """Save full raw transcript to PostgreSQL podcast_transcripts table.
         Raises on failure — caller must handle (transcript is the safety net)."""
         with self._pg_cur() as cur:
-            cur.execute("""
-                INSERT INTO podcast_transcripts (episode_id, segments)
+            cur.execute(f"""
+                INSERT INTO {TRANSCRIPTS_TABLE} (episode_id, segments)
                 VALUES (%s, %s::jsonb)
                 ON CONFLICT (episode_id) DO UPDATE SET segments = EXCLUDED.segments, created_at = NOW()
             """, (episode_id, json.dumps(segments)))

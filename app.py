@@ -272,8 +272,9 @@ def health():
     except Exception:
         checks["qdrant"] = "error"
     try:
+        from config import EPISODES_TABLE
         with engine._pg_cur() as cur:
-            cur.execute("SELECT COUNT(*) FROM podcast_episodes")
+            cur.execute(f"SELECT COUNT(*) FROM {EPISODES_TABLE}")
         checks["postgres"] = "ok"
     except Exception:
         checks["postgres"] = "error"

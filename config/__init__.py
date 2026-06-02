@@ -32,6 +32,13 @@ logger = logging.getLogger(__name__)
 # PostgreSQL — episode metadata + full transcripts (not vectors).
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
+# Table names are prefixable so several projects can safely share one Postgres
+# database (a cost-saver). Default prefix is empty → plain `podcast_episodes` /
+# `podcast_transcripts`; set DB_TABLE_PREFIX=podsearch_ to namespace them.
+DB_TABLE_PREFIX   = os.getenv("DB_TABLE_PREFIX", "")
+EPISODES_TABLE    = f"{DB_TABLE_PREFIX}podcast_episodes"
+TRANSCRIPTS_TABLE = f"{DB_TABLE_PREFIX}podcast_transcripts"
+
 # Self-hosted, OpenAI-compatible inference gateway. The same base URL + bearer
 # token serve all three: chat (LLM_MODEL), embeddings (EMBEDDING_MODEL), and
 # async transcription (Parakeet, /v1/transcribe-url). Endpoints live under /v1.

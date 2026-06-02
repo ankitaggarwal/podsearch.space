@@ -301,8 +301,9 @@ def get_library_stats() -> str:
 
     total_episodes = len(episodes)
     try:
+        from config import EPISODES_TABLE
         with engine._pg_cur() as cur:
-            cur.execute("SELECT COALESCE(SUM(chunk_count), 0) FROM podcast_episodes")
+            cur.execute(f"SELECT COALESCE(SUM(chunk_count), 0) FROM {EPISODES_TABLE}")
             total_chunks = cur.fetchone()[0]
     except Exception:
         total_chunks = 0
