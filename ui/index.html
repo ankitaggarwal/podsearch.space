@@ -421,7 +421,7 @@ function EmptyShelf({live}){
 function SearchView({q}){
   const [state,setState]=useState({loading:true});
   useEffect(()=>{let on=true;setState({loading:true});
-    api('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})})
+    api('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})})
       .then(d=>on&&setState({loading:false,data:d})).catch(()=>on&&setState({loading:false,err:true}));
     return()=>{on=false};},[q]);
   const html = state.data?.answer ? DOMPurify.sanitize(marked.parse(state.data.answer)) : '';
