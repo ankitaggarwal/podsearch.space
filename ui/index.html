@@ -487,12 +487,11 @@ function Library(){
 
 /* ================= EPISODE ================= */
 function Episode({id}){
-  const [ep,setEp]=useState(undefined);const[sum,setSum]=useState(null);const[tr,setTr]=useState(null);
+  const [ep,setEp]=useState(undefined);const[sum,setSum]=useState(null);
   useEffect(()=>{let on=true;setEp(undefined);setSum(null);
     api('/api/episodes/'+id).then(d=>on&&setEp(d)).catch(()=>on&&setEp(null));
     api('/api/episodes/'+id+'/summary').then(d=>on&&setSum(d.summary||'')).catch(()=>on&&setSum(''));
     return()=>{on=false};},[id]);
-  const loadTr=()=>{ if(tr===null) api('/api/episodes/'+id+'/transcript').then(d=>setTr(d.text||'')).catch(()=>setTr('')); };
   if(ep===undefined) return <main className="wrap"><div className="spin"></div></main>;
   if(ep===null) return <main className="wrap"><div className="empty-card" style={{marginTop:60}}><h3>Episode not found</h3><p>It may not be indexed yet.</p><div style={{marginTop:16}}><button className="btn" onClick={()=>go('#/library')}>Back to the shelf</button></div></div></main>;
   return (
@@ -515,11 +514,7 @@ function Episode({id}){
          : sum? <p>{sum}</p>
          : <p style={{color:'var(--ink-3)',fontSize:16,fontFamily:'var(--font-body)',fontWeight:500}}>A summary isn’t available right now — head to the original episode to listen, or ask a question about it above.</p>}
       </div>
-      <details className="disclosure" onToggle={e=>e.target.open&&loadTr()}>
-        <summary><I.play style={{color:'var(--rust)'}}/> Read the full transcript</summary>
-        <div className="body">{tr===null? 'Loading transcript…' : tr || 'No transcript stored for this episode yet.'}</div>
-      </details>
-      <p style={{fontSize:12.5,color:'var(--ink-3)',marginTop:14,fontStyle:'italic'}}>Transcript shown for search & reference. Not affiliated with this show — please support the creators by listening to the original.</p>
+      <p style={{fontSize:12.5,color:'var(--ink-3)',marginTop:16,fontStyle:'italic'}}>Search surfaces short, cited excerpts only. Not affiliated with this show — please support the creators by listening to the original episode.</p>
     </main>
   );
 }

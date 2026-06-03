@@ -542,13 +542,11 @@ def episode_summary(episode_id: str):
         return {"summary": ""}
 
 
-@app.get("/api/episodes/{episode_id}/transcript")
-def episode_transcript(episode_id: str):
-    """The full raw transcript, joined into plain text. Shown behind a disclosure
-    on the episode page; the primary surface is the summary + a link to the source."""
-    segments = engine.get_transcript_segments(episode_id) or []
-    text = " ".join(s.get("text", "") for s in segments if isinstance(s, dict)).strip()
-    return {"episode_id": episode_id, "text": text, "segment_count": len(segments)}
+# NOTE: there is deliberately no public full-transcript endpoint. The web surface
+# exposes only the AI summary + short, cited search excerpts (with links back to the
+# original episode), so the site can't be used to scrape whole transcripts. Full
+# transcripts remain available only to authenticated agents via the token-gated MCP
+# server, which is meant for trusted use.
 
 
 @app.get("/api/stats")
