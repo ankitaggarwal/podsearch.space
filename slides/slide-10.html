@@ -1,0 +1,30 @@
+<div class="slide-inner">
+  <div class="slide-content" style="justify-content:center;">
+    <div class="kicker anim d1"><svg class="ico"><use href="#i-search"/></svg> &nbsp;act ii · retrieve</div>
+    <h2 class="head anim-up d2" style="margin-top:12px;">find the nearest moments — then <span class="mark">re-rank</span>.</h2>
+    <p class="lead anim-up d3" style="margin-top:10px; max-width:900px; font-size:21px;">Pinecone embeds the query and returns the closest <span class="mono">25</span> chunks. then a keyword boost rescues the exact names, and a dynamic threshold trims to the keepers.</p>
+
+    <div style="display:flex; gap:26px; margin-top:26px; align-items:stretch;">
+      <div style="flex:1.05; display:flex; flex-direction:column; gap:11px;">
+        <div class="card anim-up d4" style="display:flex; gap:13px; align-items:center; padding:13px 18px;"><span class="badge badge--denim" style="width:44px;height:44px;"><svg class="ico"><use href="#i-vector"/></svg></span><div><b>① broad vector pull</b><div style="color:var(--ink-soft); font-size:14px;">top_k = 25 by cosine similarity</div></div></div>
+        <div class="card anim-up d5" style="display:flex; gap:13px; align-items:center; padding:13px 18px;"><span class="badge badge--rust" style="width:44px;height:44px;"><svg class="ico"><use href="#i-sliders"/></svg></span><div><b>② keyword re-rank</b><div style="color:var(--ink-soft); font-size:14px;">overlap bonus, up to <span class="mono">+0.15</span></div></div></div>
+        <div class="card anim-up d6" style="display:flex; gap:13px; align-items:center; padding:13px 18px;"><span class="badge badge--mustard" style="width:44px;height:44px;"><svg class="ico"><use href="#i-gauge"/></svg></span><div><b>③ dynamic threshold</b><div style="color:var(--ink-soft); font-size:14px;">keep within 55% of the best score</div></div></div>
+      </div>
+
+      <div style="flex:1; display:flex; flex-direction:column; gap:11px;">
+        <div style="font-family:var(--font-hand); font-size:21px; font-weight:700; color:var(--ink-soft);">why hybrid? vectors get the <span class="hl-teal">vibe</span>, keywords get the <span class="hl">name</span>.</div>
+        <div class="card anim-up d6" style="padding:13px 18px;">
+          <div style="font-size:11px; letter-spacing:2px; font-weight:800; color:var(--ink-soft);">VECTOR ONLY</div>
+          <p style="font-size:15px; margin-top:4px;">nails “pricing strategy” … but buries the chunk that names <span class="mono">“RevenueCat”</span>.</p>
+        </div>
+        <div class="card anim-up d7" style="padding:13px 18px; background:var(--mustard); border:2px solid var(--ink);">
+          <div style="font-size:11px; letter-spacing:2px; font-weight:800;">+ KEYWORD BOOST</div>
+          <p style="font-weight:700; font-size:15px; margin-top:4px;">lifts proper nouns &amp; exact phrases back to the top — most of a re-ranker's win, almost none of the cost.</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="lead anim-fade d8" style="font-size:16px; margin-top:20px;">nothing clears the bar? it <span class="mark">says so</span> — it won't force an answer out of weak matches.</p>
+  </div>
+  <div class="footer"><div class="brand"><span class="dot"></span> podcast search</div><span>10 / 16</span></div>
+</div>

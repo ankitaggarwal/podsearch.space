@@ -1,0 +1,20 @@
+<div class="slide-inner">
+  <div class="slide-content" style="justify-content:center;">
+    <div class="kicker anim d1"><svg class="ico"><use href="#i-spark"/></svg> &nbsp;act iii · answer</div>
+    <h2 class="head anim-up d2" style="margin-top:14px;">write the answer from the <span class="mark">excerpts</span> — and only the excerpts.</h2>
+    <p class="lead anim-up d3" style="margin-top:12px; max-width:880px;">the retrieved chunks (with their timestamps) go to <span class="mono">Gemma 4 E4B</span> under a strict system prompt. it synthesizes; it doesn't recall.</p>
+
+    <div style="display:flex; gap:18px; margin-top:30px;">
+      <div class="card anim-up d4" style="flex:1; display:flex; gap:14px; align-items:flex-start;"><span class="badge badge--teal"><svg class="ico"><use href="#i-quote"/></svg></span><div><b style="font-size:18px;">cite every claim</b><div style="color:var(--ink-soft); font-weight:600; font-size:15px;">name the episode, quote the words</div></div></div>
+      <div class="card anim-up d5" style="flex:1; display:flex; gap:14px; align-items:flex-start;"><span class="badge badge--rust"><svg class="ico"><use href="#i-lock"/></svg></span><div><b style="font-size:18px;">no outside knowledge</b><div style="color:var(--ink-soft); font-weight:600; font-size:15px;">never the model's training data</div></div></div>
+      <div class="card anim-up d6" style="flex:1; display:flex; gap:14px; align-items:flex-start;"><span class="badge badge--mustard"><svg class="ico"><use href="#i-check"/></svg></span><div><b style="font-size:18px;">admit the gaps</b><div style="color:var(--ink-soft); font-weight:600; font-size:15px;">“I don't see that discussed”</div></div></div>
+    </div>
+
+    <div class="card anim-up d7" style="margin-top:22px; background:var(--ink); color:var(--paper); border:none; font-family:var(--font-mono); font-size:14px; line-height:1.7;">
+      <span style="color:var(--mustard);"># system prompt</span><br>
+      Every claim you make MUST be traceable to a specific excerpt provided below.<br>
+      You are a <span style="color:var(--mustard);">retrieval system</span>, not a knowledge base.
+    </div>
+  </div>
+  <div class="footer"><div class="brand"><span class="dot"></span> podcast search</div><span>11 / 16</span></div>
+</div>

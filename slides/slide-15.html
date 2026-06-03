@@ -1,0 +1,37 @@
+<div class="slide-inner">
+  <div class="slide-content" style="justify-content:center;">
+    <div class="kicker anim d1"><svg class="ico"><use href="#i-server"/></svg> &nbsp;not a toy</div>
+    <h2 class="head anim-up d2" style="margin-top:14px;">built like <span class="mark">production software</span>.</h2>
+    <p class="lead anim-up d3" style="margin-top:12px; max-width:880px;">crawling the open web is messy and the catalog is read constantly — so it's engineered to feel instant, survive failure, and just run.</p>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-top:30px;">
+      <div class="card anim-up d4">
+        <div style="display:flex; align-items:center; gap:12px;"><span class="badge badge--mustard"><svg class="ico"><use href="#i-bolt"/></svg></span><b style="font-size:19px;">fast</b></div>
+        <ul style="margin:14px 0 0; padding-left:18px; color:var(--ink-soft); font-size:15px; line-height:1.7;">
+          <li>catalog cached in memory, PostgreSQL-backed</li>
+          <li>stale-while-revalidate on a 2-min TTL</li>
+          <li>one shared engine behind app + MCP</li>
+        </ul>
+      </div>
+      <div class="card anim-up d5">
+        <div style="display:flex; align-items:center; gap:12px;"><span class="badge badge--rust"><svg class="ico"><use href="#i-lock"/></svg></span><b style="font-size:19px;">sturdy</b></div>
+        <ul style="margin:14px 0 0; padding-left:18px; color:var(--ink-soft); font-size:15px; line-height:1.7;">
+          <li>auth + rate limit (60/min)</li>
+          <li>audio-URL dedup; skip a show after 3 fails</li>
+          <li>oversize audio compressed to fit the 50 MB cap</li>
+        </ul>
+      </div>
+      <div class="card anim-up d6">
+        <div style="display:flex; align-items:center; gap:12px;"><span class="badge badge--teal"><svg class="ico"><use href="#i-rocket"/></svg></span><b style="font-size:19px;">shipped</b></div>
+        <ul style="margin:14px 0 0; padding-left:18px; color:var(--ink-soft); font-size:15px; line-height:1.7;">
+          <li>Docker on a small <span class="mono">~$5/mo</span> VPS</li>
+          <li>heavy lifting lives behind the gateway</li>
+          <li>auto-deployed from <span class="mono">main</span>, health-checked</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="lead anim-fade d8" style="font-size:18px; margin-top:26px;">every failure is <span class="mark">logged with a reason</span> and streamed to the UI — watch the crawl, and know why something was skipped.</p>
+  </div>
+  <div class="footer"><div class="brand"><span class="dot"></span> podcast search</div><span>15 / 16</span></div>
+</div>

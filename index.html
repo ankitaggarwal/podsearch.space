@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Podcast Search — slide deck</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 440 220'><path d='M100 145Q100 45 220 38Q340 45 340 145' fill='none' stroke='%23D9542B' stroke-width='18' stroke-linecap='round'/><rect x='68' y='118' width='50' height='68' rx='14' fill='%23D9542B'/><rect x='74' y='124' width='38' height='56' rx='10' fill='%23E8A93C'/><rect x='80' y='131' width='26' height='42' rx='7' fill='%23D9542B'/><rect x='322' y='118' width='50' height='68' rx='14' fill='%23D9542B'/><rect x='328' y='124' width='38' height='56' rx='10' fill='%23E8A93C'/><rect x='334' y='131' width='26' height='42' rx='7' fill='%23D9542B'/><circle cx='170' cy='155' r='42' fill='none' stroke='%23D9542B' stroke-width='8'/><circle cx='170' cy='155' r='34' fill='%23FBF3E7'/><circle cx='170' cy='155' r='22' fill='%232A1E16'/><circle cx='270' cy='155' r='42' fill='none' stroke='%23D9542B' stroke-width='8'/><circle cx='270' cy='155' r='34' fill='%23FBF3E7'/><circle cx='270' cy='155' r='22' fill='%232A1E16'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Caveat:wght@500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      background: #1a120b;
+      overflow: hidden;
+      cursor: default;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    :root {
+      /* "Warm Radio / Tape" design system: warm paper + espresso ink + rust/teal/mustard */
+      --paper:   #FBF3E7;
+      --paper-2: #F5E9D6;
+      --ink:     #2A1E16;   /* text / borders / dark slides */
+      --ink-soft:#5C4A3D;
+
+      --rust:    #D9542B;   /* signature warm accent */
+      --rust-d:  #B33E1C;
+      --teal:    #2E8B86;
+      --teal-d:  #1F6B66;
+      --mustard: #E8A93C;   /* the "highlight block" colour */
+      --mustard-d:#C8861B;
+      --berry:   #9B4E6C;   /* dusty plum */
+      --berry-d: #79394F;
+      --denim:   #3E6B8B;   /* dusty blue */
+      --denim-d: #2C516B;
+
+      --card:    #FFFDF8;   /* warm white card */
+      --border:  rgba(42,30,22,0.14);
+
+      --font-main: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      --font-head: 'Fraunces', Georgia, serif;
+      --font-hand: 'Caveat', cursive;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      --shadow:    0 6px 0 rgba(42,30,22,0.10), 0 18px 36px rgba(42,30,22,0.16);
+      --shadow-sm: 0 4px 0 rgba(42,30,22,0.08), 0 9px 20px rgba(42,30,22,0.12);
+    }
+
+    .deck { position: relative; width: 100vw; height: 100vh; }
+    .slide {
+      position: absolute; inset: 0;
+      display: none; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.35s ease;
+    }
+    .slide--active { display: flex; opacity: 1; }
+
+    .slide-inner {
+      width: 1280px; height: 720px;
+      position: relative; overflow: hidden;
+      transform-origin: center center; border-radius: 32px;
+      background: var(--paper); color: var(--ink);
+      border: 3px solid var(--ink);
+    }
+    /* themes: warm-paper dominant; one espresso-ink slide for the reveal */
+    .slide--paper .slide-inner { background:
+        radial-gradient(820px 480px at 88% -12%, #FBE3BE 0%, transparent 60%),
+        radial-gradient(700px 600px at -8% 112%, #F4D8C2 0%, transparent 55%),
+        var(--paper); }
+    .slide--mustard .slide-inner { background: linear-gradient(150deg, #FBE6C2 0%, var(--paper) 58%); }
+    .slide--teal    .slide-inner { background: linear-gradient(150deg, #CFE7E2 0%, var(--paper) 58%); }
+    .slide--rust    .slide-inner { background: linear-gradient(150deg, #F7DAC6 0%, var(--paper) 58%); }
+    .slide--berry   .slide-inner { background: linear-gradient(150deg, #EFD7DF 0%, var(--paper) 58%); }
+    .slide--ink     .slide-inner { background:
+        radial-gradient(680px 560px at 80% 14%, #5a3417 0%, transparent 60%),
+        radial-gradient(560px 520px at 10% 110%, #43261b 0%, transparent 55%),
+        var(--ink); color: var(--paper); }
+
+    .slide-content {
+      padding: 60px 80px; height: 100%;
+      display: flex; flex-direction: column;
+      position: relative; z-index: 2;
+    }
+
+    /* ---------- typography ---------- */
+    .kicker {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: var(--font-hand); font-weight: 700;
+      font-size: 22px; letter-spacing: 0.3px;
+      color: var(--ink);
+      background: var(--mustard); border: 2px solid var(--ink); border-radius: 999px;
+      padding: 3px 18px; align-self: flex-start;
+    }
+    .kicker .ico { width: 18px; height: 18px; }
+    .slide--ink .kicker { color: var(--ink); background: var(--mustard); }
+
+    h1.big {
+      font-family: var(--font-head); font-weight: 600;
+      font-size: 92px; line-height: 0.94; letter-spacing: -1px;
+      font-optical-sizing: auto; text-wrap: balance;
+    }
+    h2.head {
+      font-family: var(--font-head); font-weight: 600;
+      font-size: 58px; line-height: 1.02; letter-spacing: -0.4px;
+      text-wrap: balance;
+    }
+    h3.sub { font-family: var(--font-main); font-weight: 700; font-size: 28px; line-height: 1.18; text-wrap: balance; }
+    p.lead { font-size: 24px; line-height: 1.45; color: var(--ink-soft); font-weight: 500; text-wrap: pretty; }
+    .slide--ink p.lead { color: rgba(251,243,231,0.92); }
+    .mono { font-family: var(--font-mono); }
+    .hl       { color: var(--rust-d);   font-style: italic; }
+    .hl-teal  { color: var(--teal-d);   font-style: italic; }
+    .hl-mustard{color: var(--mustard-d);font-style: italic; }
+    .hl-berry { color: var(--berry-d);  font-style: italic; }
+    .hl-denim { color: var(--denim-d);  font-style: italic; }
+    .u-wavy { font-family: var(--font-hand); font-size: 1.16em; font-weight: 700; font-style: normal;
+      margin: 0 0.1em; text-decoration: underline wavy var(--rust); text-decoration-thickness: 3px; text-underline-offset: 6px; }
+    /* accent: thick mustard underline */
+    .mark { text-decoration: underline; text-decoration-color: var(--mustard);
+      text-decoration-thickness: 8px; text-underline-offset: 1px; text-decoration-skip-ink: none; }
+    .slide--ink .mark { text-decoration-color: var(--mustard); }
+
+    /* ---------- reusable bits ---------- */
+    .pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-weight: 600; font-size: 16px; color: var(--ink);
+      background: var(--card); border: 2px solid var(--ink); border-radius: 999px; padding: 7px 18px;
+      box-shadow: var(--shadow-sm);
+    }
+    .card {
+      background: var(--card); border-radius: 24px; padding: 24px 26px;
+      border: 2px solid var(--border); box-shadow: var(--shadow); color: var(--ink);
+    }
+    /* ---- line-icon system ---- */
+    .ico { width: 1em; height: 1em; display:inline-block; vertical-align:-0.14em;
+      fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+    .badge { width:56px; height:56px; border-radius:17px; display:inline-flex; align-items:center;
+      justify-content:center; background:var(--card); border:2px solid var(--ink); box-shadow:var(--shadow-sm); flex:0 0 auto; }
+    .badge .ico { width:28px; height:28px; }
+    .badge--rust   { color:var(--rust-d);    background:rgba(217,84,43,.15); }
+    .badge--teal   { color:var(--teal-d);    background:rgba(46,139,134,.16); }
+    .badge--mustard{ color:var(--mustard-d); background:rgba(232,169,60,.22); }
+    .badge--berry  { color:var(--berry-d);   background:rgba(155,78,108,.16); }
+    .badge--denim  { color:var(--denim-d);   background:rgba(62,107,139,.16); }
+    .badge--ghost  { color:var(--paper);     background:rgba(255,255,255,.16); border-color:rgba(255,255,255,.4); }
+    .ico-hero { width:118px; height:118px; stroke-width:1.5; }
+
+    .footer {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 48px;
+      padding: 0 80px; display: flex; align-items: center; justify-content: space-between;
+      font-family: var(--font-head); font-weight: 500; font-size: 14px;
+      color: var(--ink-soft); z-index: 2;
+    }
+    .slide--ink .footer { color: rgba(251,243,231,0.7); }
+    .footer .brand { display: flex; align-items: center; gap: 9px; }
+    .footer .dot { width: 13px; height: 13px; border-radius: 50%; background: var(--rust);
+      border: 2px solid var(--ink); }
+    .slide--ink .footer .dot { border-color: var(--paper); }
+
+    /* ===================================================== */
+    /*  MASCOT: "Cassie", a little cassette tape             */
+    /* ===================================================== */
+    .tape { position: relative; width: 196px; height: 130px; }
+    .tape .shell { position:absolute; inset:0; border-radius:18px;
+      background: linear-gradient(155deg, #E8702F 0%, #D9542B 55%, #B33E1C 100%);
+      border: 3px solid var(--ink); box-shadow: var(--shadow); }
+    .tape .screw { position:absolute; width:7px; height:7px; border-radius:50%;
+      background:var(--ink); opacity:.55; }
+    .tape .screw.tl{ left:11px; top:11px } .tape .screw.tr{ right:11px; top:11px }
+    .tape .screw.bl{ left:11px; bottom:11px } .tape .screw.br{ right:11px; bottom:11px }
+    .tape .label { position:absolute; top:16px; left:22px; right:22px; height:44px;
+      background: var(--card); border:2px solid var(--ink); border-radius:9px;
+      display:flex; align-items:center; justify-content:center; gap:13px; overflow:hidden; }
+    .tape .label::before { content:''; position:absolute; top:7px; left:8px; right:8px; height:3px;
+      border-radius:2px; background: var(--mustard); }
+    .tape .eye { width:13px; height:13px; border-radius:50%; background:var(--ink); margin-top:7px;
+      animation: blink 3.6s infinite; }
+    .tape .cheek { position:absolute; top:40px; width:11px; height:6px; border-radius:50%; background:rgba(217,84,43,.5); }
+    .tape .cheek.l{ left:60px } .tape .cheek.r{ right:60px }
+    .tape .window { position:absolute; top:72px; width:38px; height:38px; border-radius:50%;
+      background:#2c2c2c; border:2px solid var(--ink); display:flex; align-items:center; justify-content:center; }
+    .tape .window.l{ left:38px } .tape .window.r{ right:38px }
+    .tape .reel { width:24px; height:24px; border-radius:50%; background:var(--paper);
+      border:2px solid var(--ink); position:relative; animation: spin 3.2s linear infinite; }
+    .tape .reel::before, .tape .reel::after { content:''; position:absolute; left:50%; top:50%;
+      width:3px; height:11px; background:var(--ink); border-radius:2px; transform-origin:center; }
+    .tape .reel::before { transform:translate(-50%,-50%) rotate(0deg) }
+    .tape .reel::after  { transform:translate(-50%,-50%) rotate(60deg) }
+    .tape .reel .spoke { position:absolute; left:50%; top:50%; width:3px; height:11px;
+      background:var(--ink); border-radius:2px; transform:translate(-50%,-50%) rotate(120deg) }
+    .tape .ribbon { position:absolute; top:84px; left:62px; right:62px; height:14px;
+      border:2px solid var(--ink); border-top:none; border-radius:0 0 10px 10px; background:rgba(42,30,22,.08); }
+    .tape--bob { animation: bob 2.8s ease-in-out infinite; }
+    /* eyes-headphones mascot — the brand mark (matches podsearch.space) */
+    .mascot { display:block; overflow:visible; }
+    .mascot-eye { transform-box: fill-box; transform-origin: center; animation: mblink 5.5s infinite; }
+    .mascot-eye:nth-of-type(2){ animation-delay:.12s; }
+    @keyframes mblink { 0%,92%,100%{ transform: scaleY(1) } 95%{ transform: scaleY(.1) } }
+    /* sound waves emanating from the playing tape (title) */
+    .tape-waves { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 0; height: 0; z-index: 0; }
+    .tape-waves i { position: absolute; left: 0; top: 0; width: 210px; height: 140px; margin: -70px 0 0 -105px;
+      border-radius: 22px; border: 2px solid var(--mustard); opacity: 0; animation: tapewave 3s ease-out infinite; }
+    .tape-waves i:nth-child(2) { animation-delay: 1s } .tape-waves i:nth-child(3) { animation-delay: 2s }
+    @keyframes tapewave { 0% { transform: scale(.62); opacity: .45 } 100% { transform: scale(1.6); opacity: 0 } }
+
+    @keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-12px) } }
+    @keyframes spin { to { transform: rotate(360deg) } }
+    @keyframes blink { 0%,92%,100% { transform: scaleY(1) } 96% { transform: scaleY(0.1) } }
+
+    /* ---------- entrance animations (replay each time a slide is shown) ---------- */
+    .anim { opacity: 0; animation: pop 0.55s cubic-bezier(.2,.9,.3,1.3) forwards; }
+    .anim-up { opacity: 0; animation: rise 0.6s cubic-bezier(.2,.8,.3,1) forwards; }
+    .anim-fade { opacity: 0; animation: fade 0.7s ease forwards; }
+    .d1 { animation-delay: .12s } .d2 { animation-delay: .24s } .d3 { animation-delay: .36s }
+    .d4 { animation-delay: .48s } .d5 { animation-delay: .6s } .d6 { animation-delay: .72s }
+    .d7 { animation-delay: .84s } .d8 { animation-delay: .96s }
+    @keyframes pop { 0% { opacity: 0; transform: scale(0.7) } 100% { opacity: 1; transform: scale(1) } }
+    @keyframes rise { 0% { opacity: 0; transform: translateY(26px) } 100% { opacity: 1; transform: translateY(0) } }
+    @keyframes fade { to { opacity: 1 } }
+
+    /* floaty decorative blobs */
+    .float { animation: floaty 4.5s ease-in-out infinite; }
+    .float2 { animation: floaty 5.5s ease-in-out infinite 0.6s; }
+    @keyframes floaty { 0%,100% { transform: translateY(0) rotate(0) } 50% { transform: translateY(-16px) rotate(6deg) } }
+
+    /* ---------- audio widgets ---------- */
+    /* equalizer / waveform */
+    .eq { display:flex; align-items:flex-end; gap:6px; height:72px; }
+    .eq span { width:11px; border-radius:6px; background:linear-gradient(180deg,var(--mustard),var(--rust));
+      animation: eq 1.1s ease-in-out infinite; }
+    .eq span:nth-child(1){ animation-delay:0s } .eq span:nth-child(2){ animation-delay:.15s }
+    .eq span:nth-child(3){ animation-delay:.32s } .eq span:nth-child(4){ animation-delay:.5s }
+    .eq span:nth-child(5){ animation-delay:.18s } .eq span:nth-child(6){ animation-delay:.42s }
+    .eq span:nth-child(7){ animation-delay:.08s } .eq span:nth-child(8){ animation-delay:.6s }
+    .eq span:nth-child(9){ animation-delay:.28s } .eq span:nth-child(10){ animation-delay:.46s }
+    .eq span:nth-child(11){ animation-delay:.12s } .eq span:nth-child(12){ animation-delay:.54s }
+    @keyframes eq { 0%,100% { height:22% } 50% { height:100% } }
+
+    /* sound-pulse rings */
+    .pulse { position:relative; width:0; height:0; }
+    .pulse i { position:absolute; left:0; top:0; width:60px; height:60px; margin:-30px;
+      border-radius:50%; border:2.5px solid var(--rust); opacity:0; animation: ping 2.4s ease-out infinite; }
+    .pulse i:nth-child(2){ animation-delay:.8s } .pulse i:nth-child(3){ animation-delay:1.6s }
+    @keyframes ping { 0% { transform:scale(.4); opacity:.7 } 100% { transform:scale(2.6); opacity:0 } }
+
+    /* scrubbing playhead track */
+    .track { position:relative; height:12px; border-radius:999px; background:rgba(42,30,22,0.12); }
+    .track-fill { position:absolute; left:0; top:0; bottom:0; border-radius:999px; width:0;
+      background:linear-gradient(90deg,var(--teal),var(--mustard)); animation: scrub 3.4s cubic-bezier(.5,0,.3,1) infinite; }
+    .track .head { position:absolute; top:50%; left:0; width:22px; height:22px; border-radius:50%;
+      background:var(--card); border:3px solid var(--ink); transform:translate(-50%,-50%);
+      box-shadow:var(--shadow-sm); animation: scrubdot 3.4s cubic-bezier(.5,0,.3,1) infinite; }
+    @keyframes scrub { 0% { width:6% } 90%,100% { width:100% } }
+    @keyframes scrubdot { 0% { left:6% } 90%,100% { left:100% } }
+
+    /* VU meter gauge */
+    .vu { position:relative; width:220px; height:128px; overflow:hidden; }
+    .vu .arc { position:absolute; left:0; top:0; width:220px; height:220px; border-radius:50%;
+      border:14px solid rgba(42,30,22,0.10); border-bottom-color:transparent; border-left-color:transparent;
+      transform:rotate(-135deg); }
+    .vu .arc.hot { border-top-color:var(--rust); border-right-color:transparent; }
+    .vu .needle { position:absolute; left:50%; bottom:8px; width:4px; height:96px; background:var(--ink);
+      border-radius:3px; transform-origin:bottom center; transform:rotate(-52deg);
+      animation: vuswing 2.6s ease-in-out infinite; }
+    .vu .pin { position:absolute; left:50%; bottom:2px; width:16px; height:16px; border-radius:50%;
+      background:var(--ink); transform:translateX(-50%); }
+    @keyframes vuswing { 0%,100% { transform:rotate(-50deg) } 45% { transform:rotate(34deg) } 70% { transform:rotate(8deg) } }
+
+    /* transcript timeline lanes */
+    .lane { display:flex; align-items:center; gap:12px; }
+    .lane .who { flex:0 0 96px; font-weight:700; font-size:14px; }
+    .utt { height:26px; border-radius:8px; opacity:0; transform-origin:left;
+      animation: grow .55s cubic-bezier(.2,.8,.3,1) forwards; }
+
+    /* funnel bars */
+    .fbar { height: 54px; border-radius: 13px; display: flex; align-items: center; padding: 0 20px;
+      color: #fff; font-weight: 800; font-family: var(--font-head); transform-origin: left;
+      box-shadow: var(--shadow-sm); animation: grow .7s cubic-bezier(.2,.8,.3,1) forwards; opacity: 0; }
+    @keyframes grow { 0% { opacity: 0; transform: scaleX(0.15) } 100% { opacity: 1; transform: scaleX(1) } }
+
+    /* approve / honesty stamp */
+    .stamp { font-family: var(--font-head); font-weight: 700; font-size: 22px;
+      border: 4px solid; border-radius: 14px; padding: 8px 18px; display: inline-block;
+      transform: rotate(-8deg) scale(2); opacity: 0; animation: thunk .5s cubic-bezier(.3,1.4,.4,1) forwards .5s; }
+    .stamp.ok { color: var(--teal-d); border-color: var(--teal-d); }
+    .stamp.no { color: var(--rust-d); border-color: var(--rust-d); }
+    @keyframes thunk { to { opacity: .92; transform: rotate(-8deg) scale(1) } }
+
+    /* conveyor / pipeline */
+    .conveyor { display: flex; align-items: center; gap: 0; width: 100%; }
+    .station { flex: 1; text-align: center; }
+    .arrow { color: var(--ink-soft); font-size: 26px; font-weight: 900; opacity: .5; }
+
+    /* search demo */
+    .searchbar { display: flex; align-items: center; gap: 12px; background: var(--card); border-radius: 999px;
+      padding: 16px 26px; box-shadow: var(--shadow); font-size: 22px; font-weight: 700; color: var(--ink);
+      border:2px solid var(--ink); }
+    .caret { width: 3px; height: 26px; background: var(--rust); display: inline-block; animation: caret 1s steps(1) infinite; }
+    @keyframes caret { 50% { opacity: 0 } }
+
+    /* vector cluster / similarity map */
+    .galaxy { position: relative; width: 100%; height: 100%; }
+    .galaxy .ring { position:absolute; left:50%; top:50%; border:1.5px dashed rgba(42,30,22,.18); border-radius:50%;
+      transform:translate(-50%,-50%); }
+    .star { position: absolute; width: 14px; height: 14px; border-radius: 5px; opacity: 0; animation: pop .5s forwards; }
+    /* sonar pulse where the query lands in vector space */
+    .galaxy .qpulse { position: absolute; width: 22px; height: 22px; border-radius: 8px;
+      border: 2px solid var(--mustard-d); transform-origin: center; opacity: 0;
+      animation: qpulse 2.4s ease-out infinite; }
+    @keyframes qpulse { 0% { transform: scale(1); opacity: .55 } 100% { transform: scale(3.6); opacity: 0 } }
+
+    /* assembly-line belt: dashes scroll so the line literally moves, one direction */
+    .belt { animation: beltmove 1.15s linear infinite; }
+    @keyframes beltmove { from { background-position: 0 0 } to { background-position: 36px 0 } }
+
+    /* one-shot highlight sweep across the cited quote (draws the eye to the evidence) */
+    .q-sweep { position: relative; overflow: hidden; }
+    .q-sweep::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(100deg, transparent 20%, rgba(232,169,60,.45), transparent 80%);
+      transform: translateX(-110%); animation: sweep 1.1s cubic-bezier(.4,0,.2,1) 1.5s; }
+    @keyframes sweep { to { transform: translateX(110%) } }
+
+    /* marquee of show names */
+    .marquee { overflow:hidden; width:100%; -webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);
+      mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent); }
+    .marquee-track { display:flex; gap:14px; width:max-content; animation: marquee 26s linear infinite; }
+    @keyframes marquee { to { transform: translateX(-50%) } }
+
+    /* ---------- nav ---------- */
+    .controls {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 16px;
+      background: rgba(42,30,22,0.94); padding: 10px 26px; border-radius: 40px;
+      z-index: 1000; opacity: 0; transition: opacity 0.4s ease; backdrop-filter: blur(12px);
+    }
+    body:hover .controls { opacity: 1; }
+    .nav-btn { background: none; border: none; color: #fff; font-size: 18px; cursor: pointer;
+      padding: 6px 10px; opacity: 0.6; transition: all 0.2s; border-radius: 8px; }
+    .nav-btn:hover { opacity: 1; background: rgba(255,255,255,0.08); }
+    .slide-counter { color: var(--mustard); font-family: var(--font-mono); font-size: 13px; min-width: 54px; text-align: center; }
+
+    /* thin act-aware progress bar pinned to the bottom of the viewport */
+    .progress { position: fixed; left: 0; bottom: 0; height: 3px; width: 0;
+      background: linear-gradient(90deg, var(--rust), var(--mustard));
+      z-index: 1001; transition: width 0.45s cubic-bezier(.4,0,.2,1); opacity: 0.9; }
+
+    /* presenter notes overlay — toggle with N; the deck narrates itself */
+    .notes { position: fixed; left: 50%; bottom: 74px; transform: translateX(-50%);
+      width: min(880px, 84vw); background: var(--card); border: 2px solid var(--ink);
+      border-radius: 16px; box-shadow: var(--shadow); padding: 15px 22px; z-index: 1002;
+      display: none; font-family: var(--font-main); }
+    .notes.show { display: block; animation: notesin .32s cubic-bezier(.2,.8,.3,1); }
+    @keyframes notesin { from { opacity: 0; transform: translate(-50%, 24px) } to { opacity: 1; transform: translate(-50%, 0) } }
+    .notes .nlabel { font-family: var(--font-hand); font-weight: 700; font-size: 16px;
+      color: var(--rust-d); margin-bottom: 3px; display: flex; align-items: center; gap: 8px; }
+    .notes .ntext { font-size: 16.5px; line-height: 1.5; color: var(--ink); font-weight: 500; }
+
+    /* respect reduced-motion: settle every animation to its end-state, keep slide changes instant */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+      .anim, .anim-up, .anim-fade { opacity: 1 !important; transform: none !important; }
+      .eq span { height: 64% !important; }
+      .track-fill { width: 60% !important; } .track .head { left: 60% !important; }
+      .slide { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <!-- icon sprite: referenced by <svg class="ico"><use href="#i-..."/></svg> -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></symbol>
+      <symbol id="i-headphones" viewBox="0 0 24 24"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="13" width="4.5" height="7" rx="1.6"/><rect x="16.5" y="13" width="4.5" height="7" rx="1.6"/></symbol>
+      <symbol id="i-wave" viewBox="0 0 24 24"><path d="M4 9v6M8 5v14M12 8v8M16 4v16M20 9v6"/></symbol>
+      <symbol id="i-rss" viewBox="0 0 24 24"><path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1.6"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></symbol>
+      <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M8.1 7.6 20 16M8.1 16.4 20 8"/></symbol>
+      <symbol id="i-vector" viewBox="0 0 24 24"><circle cx="6" cy="7" r="1.7"/><circle cx="10.5" cy="14" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="18" cy="15" r="1.7"/><circle cx="13" cy="19.5" r="1.7"/></symbol>
+      <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3 3 7 3s7-1.3 7-3"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-3.6-3.6"/></symbol>
+      <symbol id="i-quote" viewBox="0 0 24 24"><path d="M10 7c-3 0-4 2.5-4 5v5h5v-5H8c0-1.6.7-2.6 2.5-2.6zM21 7c-3 0-4 2.5-4 5v5h5v-5h-3c0-1.6.7-2.6 2.5-2.6z"/></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M9 15l6-6M10.5 6.5l1-1a4 4 0 0 1 6 6l-1 1M13.5 17.5l-1 1a4 4 0 0 1-6-6l1-1"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.4l3 1.8"/></symbol>
+      <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 6M20.5 19a5.5 5.5 0 0 0-4-5.3"/></symbol>
+      <symbol id="i-bot" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="10" rx="3"/><path d="M12 8V5"/><circle cx="12" cy="3.6" r="1.4"/><circle cx="9.5" cy="13" r="1.1"/><circle cx="14.5" cy="13" r="1.1"/><path d="M3 12v3M21 12v3"/></symbol>
+      <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M6.5 7.5h.01M6.5 16.5h.01"/></symbol>
+      <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.3A3.5 3.5 0 0 1 18 18z"/></symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3 5 14h6l-1 7 8-11h-6z"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+      <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4.5-5.5"/><circle cx="12" cy="18" r="1.5"/></symbol>
+      <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3c.6 4.6 1.6 5.6 6 6-4.4.4-5.4 1.4-6 6-.6-4.6-1.6-5.6-6-6 4.4-.4 5.4-1.4 6-6z"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+      <symbol id="i-chip" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2.5"/><path d="M10 3v2M14 3v2M10 19v2M14 19v2M3 10h2M3 14h2M19 10h2M19 14h2"/></symbol>
+      <symbol id="i-tape" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2.5"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="12" r="2"/><path d="M7.5 18l1.3-3M16.5 18l-1.3-3"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+      <symbol id="i-code" viewBox="0 0 24 24"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></symbol>
+      <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M5.5 15c-1.2 1-1.7 4.2-1.7 4.2s3.2-.5 4.2-1.7M14 5c3-3 6.2-2.2 6.2-2.2s.8 3.2-2.2 6.2l-6.5 6.5-3.5-3.5z"/><circle cx="14.5" cy="9.5" r="1.5"/></symbol>
+      <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 8h8M16 8h4M4 16h4M12 16h8"/><circle cx="14" cy="8" r="2.1"/><circle cx="9" cy="16" r="2.1"/></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17l-5.2 2.6 1-5.8L3.5 9.7l5.9-.9z"/></symbol>
+      <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="deck" id="deck"></div>
+  <div class="progress" id="progress"></div>
+  <div class="notes" id="notes">
+    <div class="nlabel">presenter notes <span style="font-weight:400; opacity:.7;">· press N to hide</span></div>
+    <div class="ntext" id="ntext"></div>
+  </div>
+  <div class="controls">
+    <button class="nav-btn" id="prev">&#8592;</button>
+    <span class="slide-counter"><span id="current">1</span> / <span id="total">16</span></span>
+    <button class="nav-btn" id="next">&#8594;</button>
+    <button class="nav-btn" id="notesBtn" title="Presenter notes (N)" style="font-family:var(--font-mono); font-size:12px;">N</button>
+  </div>
+  <script>
+    (function () {
+      var TOTAL = 16;
+      // warm-paper canvas throughout; the "grounded, not generative" reveal (slide 12) goes ink-dark for punch
+      var THEMES = [
+        'paper','paper','teal','paper',     // 1-4  open: title, problem, promise+demo, stack
+        'mustard','paper','paper',          // 5-7  act i: pipeline map, ingest, transcribe
+        'paper','teal','rust',              // 8-10 act ii: chunk, embed, retrieve
+        'paper','ink',                      // 11-12 act iii: answer, reveal
+        'paper','mustard',                  // 13-14 payoff: receipt, MCP
+        'paper','paper'                     // 15-16 production, closer
+      ];
+      var deck = document.getElementById('deck');
+      var counterEl = document.getElementById('current');
+      var slides = []; var current = 0;
+      var hash = parseInt(location.hash.replace('#',''),10);
+      if(hash>=1&&hash<=TOTAL)current=hash-1;
+      else{var s=parseInt(localStorage.getItem('ps-slide'),10);if(s>=0&&s<TOTAL)current=s;}
+      for(var i=0;i<TOTAL;i++){var d=document.createElement('div');d.className='slide slide--'+THEMES[i]+(i===current?' slide--active':'');d.id='slide-'+(i+1);deck.appendChild(d);slides.push(d);}
+      var promises=[];
+      for(var i=0;i<TOTAL;i++){(function(idx){var num=String(idx+1).padStart(2,'0');promises.push(fetch('slides/slide-'+num+'.html').then(function(r){return r.text()}).then(function(html){slides[idx].innerHTML=html}))})(i);}
+      var progressEl=document.getElementById('progress');
+      function setProgress(){if(progressEl)progressEl.style.width=((current+1)/TOTAL*100)+'%'}
+      // presenter notes — the spoken narration that complements each slide
+      var NOTES=[
+        "Podcast Search turns hours of audio into answers you can trust. The promise, in three words: grounded, cited, searchable.",
+        "Podcasts are full of operator wisdom, but the format fights you — the insight is buried at minute 47 of a two-hour episode. And in the AI era there's a second problem: an answer you can't verify is just a confident guess.",
+        "So here's the product. Ask in plain English — 'how do they think about pricing?' — and you get a direct answer plus the exact quote, episode, and timestamp. Every claim traces back to the tape.",
+        "Under the hood, each stage runs where it's best: a self-hosted Parakeet gateway for speech-to-text, Pinecone's integrated embedding for vectors and search, a hosted model for the answer, and Postgres for the catalog — wired together with FastAPI and a small React app. One engine drives both the web app and an MCP server for agents — remember that, it comes back.",
+        "The whole system is one pipeline I think of in three acts: sound to text, text to searchable meaning, meaning to a cited answer. Data flows one direction, and trust is built in at every step.",
+        "Act one is ingestion: point it at RSS feeds and it resolves each episode's real audio URL, even through an Apple Podcasts link. Round-robin so no feed dominates; dedup so we never re-process the same audio.",
+        "Parakeet, running on the self-hosted gateway, turns audio into a transcript — per-utterance text with timestamps. That 'what was said, and when' is the metadata that makes everything downstream citable.",
+        "A two-hour transcript is one long wall of text, so we cut it into ~1,000-character passages — big enough to hold a thought, small enough to pinpoint. Every chunk keeps its timestamps.",
+        "Act two: each passage is upserted to Pinecone, which embeds it on the way in — so passages about the same idea land near each other even with no shared words, and there's no embedding service of our own to run. All the metadata travels with it.",
+        "At query time the question becomes a vector too. Pull the closest 25, then re-rank — and here's the key call: pure vectors nail the vibe but bury exact names like 'RevenueCat,' so a lightweight keyword boost rescues proper nouns. A dynamic threshold trims to the keepers; if nothing's good enough, it says so.",
+        "Act three: the retrieved excerpts — with their timestamps — go to Gemma 4 under a strict system prompt. It synthesizes; it doesn't recall. Cite every claim, no outside knowledge, admit the gaps.",
+        "Which is the one idea to take away: grounded, not generative. The model is a synthesizer, not a source. If it isn't in the tape, it isn't in the answer — that's what makes it trustworthy enough to act on.",
+        "That's why every answer is a receipt: sources ranked by relevance, each linking to the exact moment in the episode. You can verify it yourself in one click.",
+        "Remember 'one engine, two surfaces'? The same retrieval is exposed over MCP, so Claude Code, Desktop, or Cursor can query the library directly. The server returns raw context and never calls an LLM — the agent reasons on its own.",
+        "And it's built like production software, not a demo: cached for instant reads, hardened against the messy open web with auth, dedup and failure handling, and shipped on a small VPS, auto-deployed from main — health-checked and always-on.",
+        "The lesson I'd leave you with: retrieval is the product, the model is the garnish. A two-hour episode becomes about six cited sentences you can trust. Thanks — happy to dig into any part."
+      ];
+      var ntextEl=document.getElementById('ntext');
+      function updateNotes(){if(ntextEl)ntextEl.textContent=NOTES[current]||''}
+      Promise.all(promises).then(function(){counterEl.textContent=current+1;setProgress();updateNotes();scaleSlide()});
+      function show(idx){slides[current].classList.remove('slide--active');current=Math.max(0,Math.min(idx,TOTAL-1));slides[current].classList.add('slide--active');counterEl.textContent=current+1;location.hash=current+1;localStorage.setItem('ps-slide',current);setProgress();updateNotes();scaleSlide()}
+      function scaleSlide(){slides.forEach(function(s){var inner=s.querySelector('.slide-inner');if(!inner)return;var sx=window.innerWidth/1280;var sy=window.innerHeight/720;var sc=Math.min(sx,sy);inner.style.transform='scale('+sc+')';inner.style.transformOrigin='top left';inner.style.position='absolute';inner.style.left=((window.innerWidth-1280*sc)/2)+'px';inner.style.top=((window.innerHeight-720*sc)/2)+'px'})}
+      window.scaleSlide=scaleSlide;
+      var notesEl=document.getElementById('notes');
+      function toggleNotes(){if(notesEl)notesEl.classList.toggle('show')}
+      document.addEventListener('keydown',function(e){if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();show(current+1)}if(e.key==='ArrowLeft'){e.preventDefault();show(current-1)}if(e.key==='Home')show(0);if(e.key==='End')show(TOTAL-1);if(e.key==='n'||e.key==='N')toggleNotes();if(e.key==='f'||e.key==='F'){if(!document.fullscreenElement)document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();else document.exitFullscreen&&document.exitFullscreen()}});
+      document.getElementById('prev').addEventListener('click',function(e){e.stopPropagation();show(current-1)});
+      document.getElementById('next').addEventListener('click',function(e){e.stopPropagation();show(current+1)});
+      document.getElementById('notesBtn').addEventListener('click',function(e){e.stopPropagation();toggleNotes()});
+      document.querySelector('.deck').addEventListener('click',function(e){if(e.target.closest('.controls'))return;if(e.target.closest('a'))return;if(e.clientX/window.innerWidth>0.5)show(current+1);else show(current-1)});
+      window.addEventListener('resize',scaleSlide);
+    })();
+  </script>
+</body>
+</html>

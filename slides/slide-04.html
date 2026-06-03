@@ -1,0 +1,19 @@
+<div class="slide-inner">
+  <div class="slide-content" style="justify-content:center;">
+    <div class="kicker anim d1">how it's built</div>
+    <h2 class="head anim-up d2" style="margin-top:14px;">small, <span class="mark">boring</span>, self-hosted parts.</h2>
+    <p class="lead anim-up d3" style="margin-top:12px; max-width:860px;">no exotic infra — one self-hosted inference gateway serves speech, embeddings &amp; chat behind a single endpoint; everything else is a couple of stores and a thin app.</p>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; margin-top:32px; max-width:1080px;">
+      <div class="card anim-up d4" style="display:flex; gap:14px; align-items:center;"><span class="badge badge--rust"><svg class="ico"><use href="#i-mic"/></svg></span><div><b style="font-size:18px;">transcribe</b><div style="color:var(--ink-soft); font-weight:600; font-size:14px;">Parakeet · via gateway</div></div></div>
+      <div class="card anim-up d5" style="display:flex; gap:14px; align-items:center;"><span class="badge badge--teal"><svg class="ico"><use href="#i-vector"/></svg></span><div><b style="font-size:18px;">embed + store</b><div style="color:var(--ink-soft); font-weight:600; font-size:14px;">Pinecone · integrated embed</div></div></div>
+      <div class="card anim-up d6" style="display:flex; gap:14px; align-items:center;"><span class="badge badge--mustard"><svg class="ico"><use href="#i-spark"/></svg></span><div><b style="font-size:18px;">answer</b><div style="color:var(--ink-soft); font-weight:600; font-size:14px;">Gemma 4 E4B</div></div></div>
+      <div class="card anim-up d6" style="display:flex; gap:14px; align-items:center;"><span class="badge badge--denim"><svg class="ico"><use href="#i-server"/></svg></span><div><b style="font-size:18px;">the server</b><div style="color:var(--ink-soft); font-weight:600; font-size:14px;">FastAPI (Python)</div></div></div>
+      <div class="card anim-up d7" style="display:flex; gap:14px; align-items:center;"><span class="badge badge--berry"><svg class="ico"><use href="#i-code"/></svg></span><div><b style="font-size:18px;">the face</b><div style="color:var(--ink-soft); font-weight:600; font-size:14px;">React, single-file SPA</div></div></div>
+      <div class="card anim-up d8" style="display:flex; gap:14px; align-items:center;"><span class="badge badge--teal"><svg class="ico"><use href="#i-rocket"/></svg></span><div><b style="font-size:18px;">deploy</b><div style="color:var(--ink-soft); font-weight:600; font-size:14px;">Docker → VPS</div></div></div>
+    </div>
+
+    <p class="lead anim-fade d8" style="font-size:18px; margin-top:26px;">one shared <b>engine</b> drives two surfaces — the <span class="mark">web app</span> and an <span class="mark">MCP server</span> for agents.</p>
+  </div>
+  <div class="footer"><div class="brand"><span class="dot"></span> podcast search</div><span>04 / 16</span></div>
+</div>
