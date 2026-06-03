@@ -51,6 +51,7 @@ from config import (
     TEMP_AUDIO_DIR, LIVE_AUDIO_BASE_URL, OVERSIZE_BYTES,
     DEFAULT_PODCAST_URLS, SYSTEM_PROMPT, build_user_prompt, DATABASE_URL,
     EPISODES_TABLE, TRANSCRIPTS_TABLE,
+    ANSWER_LLM_BASE_URL, ANSWER_LLM_API_KEY, ANSWER_LLM_MODEL,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,16 @@ class PodcastEngine:
         # One OpenAI-SDK client points at the gateway for BOTH chat completions and embeddings.
         # No actual OpenAI service is contacted — the SDK is the standard wire-format client.
         self.llm_client = OpenAI(api_key=LLM_API_KEY, base_url=f"{LLM_BASE_URL}/v1")
+        # Answer-synthesis client: a separate, faster endpoint if configured (e.g.
+        # Google AI Studio), else the same local gateway. Embeddings + transcription
+        # always use self.llm_client (the local gateway).
+        if ANSWER_LLM_BASE_URL:
+            self.answer_client = OpenAI(api_key=ANSWER_LLM_API_KEY, base_url=ANSWER_LLM_BASE_URL)
+            self.answer_model = ANSWER_LLM_MODEL
+            logger.info("Answer synthesis on external endpoint: model=%s", ANSWER_LLM_MODEL)
+        else:
+            self.answer_client = self.llm_client
+            self.answer_model = LLM_MODEL
         self.qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=60)
         self.collection = QDRANT_COLLECTION
         self._http = requests.Session()
@@ -423,15 +434,15 @@ class PodcastEngine:
         sample = [p.payload.get("text", "") for p in points[::step]][:8]
         title = points[0].payload.get("episode_title", "this episode")
         context = "\n\n".join(sample)
-        resp = self.llm_client.chat.completions.create(
-            model=LLM_MODEL,
+        resp = self.answer_client.chat.completions.create(
+            model=self.answer_model,
             messages=[
                 {"role": "system", "content":
                  "You write a concise, faithful overview of a podcast episode from excerpts of its own "
                  "transcript. 2-3 sentences, no preamble, no invented facts. Describe what's discussed."},
                 {"role": "user", "content": f'Episode: "{title}"\n\nTranscript excerpts:\n{context}\n\nWrite the overview:'},
             ],
-            max_tokens=220, temperature=0.3,
+            max_tokens=600, temperature=0.3,
         )
         return (resp.choices[0].message.content or "").strip()
 
@@ -551,13 +562,13 @@ class PodcastEngine:
 
         # Step 5: LLM generates grounded answer
         context = "\n\n---\n\n".join(context_parts)
-        response = self.llm_client.chat.completions.create(
-            model=LLM_MODEL,
+        response = self.answer_client.chat.completions.create(
+            model=self.answer_model,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": build_user_prompt(context, question)},
             ],
-            max_tokens=1000,
+            max_tokens=1500,   # headroom for "thinking" models that reason before answering
             temperature=0.3,
         )
 

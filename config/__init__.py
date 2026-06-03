@@ -50,6 +50,15 @@ LLM_MODEL            = os.getenv("LLM_MODEL", "gemma4:e4b")          # answer ge
 EMBEDDING_MODEL      = os.getenv("EMBEDDING_MODEL", "embeddinggemma")  # 768-dim vectors
 EMBEDDING_DIMENSIONS = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
 
+# Answer synthesis (the chat step at query time) can run on a SEPARATE, faster
+# endpoint — e.g. Google AI Studio's OpenAI-compatible API — so search answers stay
+# fast even while the local gateway is busy transcribing. Embeddings + transcription
+# stay on the local gateway. If ANSWER_LLM_BASE_URL is empty, the local gateway is
+# used for answers too (single-endpoint default).
+ANSWER_LLM_BASE_URL = os.getenv("ANSWER_LLM_BASE_URL", "")
+ANSWER_LLM_API_KEY  = os.getenv("ANSWER_LLM_API_KEY", "")
+ANSWER_LLM_MODEL    = os.getenv("ANSWER_LLM_MODEL", LLM_MODEL)
+
 # Qdrant — vector store.
 QDRANT_URL        = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY    = os.getenv("QDRANT_API_KEY", "")
