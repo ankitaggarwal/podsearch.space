@@ -531,7 +531,7 @@ function Pipeline({stats}){
     ['b1','feeds',s.feeds,'product RSS sources'],
     ['b3','transcribed',s.episodes,'episodes · audio → text'],
     ['b4','chunks',s.chunks,'~1k-char passages'],
-    ['b5','vectors',s.vectors,'searchable in Qdrant'],
+    ['b5','vectors',s.vectors,'searchable in Pinecone'],
   ];
   return (
     <main className="wrap">
@@ -555,10 +555,10 @@ function Pipeline({stats}){
           <p>Read {s.feeds||'—'} RSS feeds, resolve each episode’s real audio, round-robin across shows, and dedupe — then transcribe with a self-hosted Parakeet model.</p>
           <div className="tag" style={{marginTop:12}}>RSS · audio · transcribe</div></div>
         <div className="act"><h3><span style={{color:'var(--mustard-d)'}}>◈</span> Act II · Index</h3>
-          <p>Cut each transcript into ~1,000-char passages (timestamps carried forward), embed them with embeddinggemma, and upsert the vectors to Qdrant.</p>
-          <div className="tag" style={{marginTop:12}}>chunk · embed · store</div></div>
+          <p>Cut each transcript into ~1,000-char passages (timestamps carried forward) and upsert them to Pinecone, whose integrated model embeds the text on the way in — no embedding service of our own.</p>
+          <div className="tag" style={{marginTop:12}}>chunk · upsert · embed</div></div>
         <div className="act"><h3><span style={{color:'var(--teal-d)'}}>✦</span> Act III · Answer</h3>
-          <p>Embed your question, pull the nearest passages, re-rank with a keyword boost, and let Gemma 4 write an answer using <em>only</em> those excerpts — citing each one.</p>
+          <p>Pinecone embeds your question and returns the nearest passages; a keyword boost re-ranks them, and a hosted model writes an answer using <em>only</em> those excerpts — citing each one.</p>
           <div className="tag" style={{marginTop:12}}>retrieve · ground · cite</div></div>
       </div>
 

@@ -254,7 +254,7 @@ def _start_crawler():
 @app.get("/api/live")
 def liveness():
     """Liveness probe — the process is up and answering HTTP. Always 200.
-    A transient dependency outage (Qdrant, Postgres) does not fail this check.
+    A transient dependency outage (Pinecone, Postgres) does not fail this check.
     The app is RUNNING; whether it's fully READY is a separate question (/api/health)."""
     return {"status": "live"}
 
@@ -551,7 +551,7 @@ def episode_summary(episode_id: str):
 
 @app.get("/api/stats")
 def stats():
-    """Library + pipeline stats for the Pipeline page. Reads Postgres + Qdrant only,
+    """Library + pipeline stats for the Pipeline page. Reads Postgres + Pinecone only,
     so it works even when the transcription gateway is down."""
     from config import EPISODES_TABLE, DEFAULT_PODCAST_URLS
     out = {

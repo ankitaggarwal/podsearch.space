@@ -3,7 +3,7 @@
 #   pipeline — the indexer, looping continuously to discover + transcribe episodes
 #   caddy    — reverse proxy with automatic HTTPS
 #
-# Postgres, Qdrant, and the inference gateway live elsewhere and are configured
+# Postgres, Pinecone, and the transcription gateway live elsewhere and are configured
 # through .env (they are NOT run on the droplet).
 
 services:

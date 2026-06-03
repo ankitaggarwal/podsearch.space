@@ -2,7 +2,7 @@
 config/__init__.py — the one place configuration and prompts live.
 
 Two kinds of settings sit here:
-  1. Secrets and host-specific values (DB URL, gateway URL/token, Qdrant creds) —
+  1. Secrets and host-specific values (DB URL, transcription gateway token, Pinecone + answer-model keys) —
      read from the environment so nothing sensitive is ever committed. Copy
      `.env.example` to `.env` and fill it in for local development.
   2. Non-secret defaults that ARE the product — the list of podcast feeds and the
@@ -40,15 +40,14 @@ EPISODES_TABLE    = f"{DB_TABLE_PREFIX}podcast_episodes"
 TRANSCRIPTS_TABLE = f"{DB_TABLE_PREFIX}podcast_transcripts"
 
 # Self-hosted, OpenAI-compatible inference gateway. The same base URL + bearer
-# token serve all three: chat (LLM_MODEL), embeddings (EMBEDDING_MODEL), and
-# async transcription (Parakeet, /v1/transcribe-url). Endpoints live under /v1.
+# token serve transcription (Parakeet, /v1/transcribe-url) and, optionally, the
+# chat answer step (LLM_MODEL) when no separate answer endpoint is configured.
+# Embeddings are NOT computed here — Pinecone's integrated model handles those.
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "")
 LLM_API_KEY  = os.getenv("LLM_API_KEY", "")
 
 # Models
-LLM_MODEL            = os.getenv("LLM_MODEL", "gemma4:e4b")          # answer generation
-EMBEDDING_MODEL      = os.getenv("EMBEDDING_MODEL", "embeddinggemma")  # 768-dim vectors
-EMBEDDING_DIMENSIONS = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
+LLM_MODEL = os.getenv("LLM_MODEL", "gemma4:e4b")          # answer generation (fallback)
 
 # Answer synthesis (the chat step at query time) can run on a SEPARATE, faster
 # endpoint — e.g. Google AI Studio's OpenAI-compatible API — so search answers stay

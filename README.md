@@ -112,8 +112,8 @@ python3 transcribe.py --episodes 5   # up to 5 per feed
 ## Configuration
 
 All configuration comes from the environment; see [`.env.example`](.env.example) for the
-full list (`DATABASE_URL`, `LLM_BASE_URL/KEY/MODEL`, `EMBEDDING_MODEL/DIMENSIONS`,
-`PINECONE_API_KEY/HOST`, `ANSWER_LLM_BASE_URL/KEY/MODEL`, `MCP_API_KEYS`, `MCP_ALLOWED_HOSTS`). Nothing sensitive is
+full list (`DATABASE_URL`, `LLM_BASE_URL/KEY/MODEL` for transcription,
+`PINECONE_API_KEY/HOST` for embedding + search, `ANSWER_LLM_BASE_URL/KEY/MODEL`, `MCP_API_KEYS`, `MCP_ALLOWED_HOSTS`). Nothing sensitive is
 committed to the repo. The `/mcp` endpoint rejects all requests unless `MCP_API_KEYS` is
 set.
 
