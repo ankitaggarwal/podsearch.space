@@ -234,10 +234,17 @@ class PodcastEngine:
         for i in range(0, len(records), 96):  # keep request bodies modest
             batch = records[i:i + 96]
             body = "\n".join(json.dumps(r) for r in batch)
-            r = self._pc.post(f"{self._pc_base}/upsert",
-                              data=body.encode("utf-8"),
-                              headers={"Content-Type": "application/x-ndjson"}, timeout=60)
-            r.raise_for_status()
+            # Retry on 429 (free-tier write rate limit) with exponential backoff so
+            # a continuous fill degrades to "slow" rather than dropping chunks.
+            for attempt in range(5):
+                r = self._pc.post(f"{self._pc_base}/upsert",
+                                  data=body.encode("utf-8"),
+                                  headers={"Content-Type": "application/x-ndjson"}, timeout=60)
+                if r.status_code == 429 and attempt < 4:
+                    _time.sleep(2 ** attempt)
+                    continue
+                r.raise_for_status()
+                break
 
     def _pc_search(self, text: str, top_k: int = 25, episode_id: str = None) -> List[Dict]:
         """Search by text (Pinecone embeds the query). Returns normalized matches:
