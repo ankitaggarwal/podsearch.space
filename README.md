@@ -9,13 +9,14 @@ claim is traceable back to the episode it came from.
 ![Podcast Search — grounded answers from real podcast transcripts](docs/hero.gif)
 
 It ingests podcast RSS feeds, transcribes the audio with a self-hosted inference
-gateway, chunks and embeds the transcripts, stores the vectors in Qdrant, and serves a
-conversational search interface that answers **only** from what was actually said.
+gateway, chunks the transcripts and stores them in Pinecone (whose integrated model
+embeds them), and serves a conversational search interface that answers **only** from
+what was actually said.
 
 ## How it works
 
 ```
-RSS feed → audio URL → transcribe → chunk → embed → Qdrant → search → grounded answer
+RSS feed → audio URL → transcribe → chunk → Pinecone (embed + store) → search → grounded answer
                                                         │
                                           one engine, two surfaces
                                                         │
@@ -27,11 +28,12 @@ RSS feed → audio URL → transcribe → chunk → embed → Qdrant → search 
    round-robin across shows, and dedupe on audio URL.
 2. **Transcribe** — send the audio to a self-hosted gateway (Parakeet) for per-utterance
    text with timestamps; oversize episodes are compressed with ffmpeg first.
-3. **Chunk & embed** — group the transcript into ~1,000-character passages (timestamps
-   carried forward) and embed them with `embeddinggemma` (768-dim).
-4. **Store** — upsert the vectors to Qdrant with their metadata; raw transcripts go to
-   PostgreSQL as the safety net.
-5. **Retrieve & answer** — embed the question, pull the top 25, re-rank with a keyword
+3. **Chunk** — group the transcript into ~1,000-character passages (timestamps carried
+   forward).
+4. **Store** — upsert the chunks to Pinecone as text records; its integrated model
+   (`llama-text-embed-v2`) embeds them on the way in. Raw transcripts go to PostgreSQL
+   as the safety net.
+5. **Retrieve & answer** — Pinecone embeds the question, pulls the top 25, re-rank with a keyword
    boost, trim with a dynamic threshold, and let Gemma 4 synthesize an answer **only**
    from the retrieved excerpts — citing every claim.
 
@@ -56,13 +58,17 @@ carried all the way through, so each answer renders as a **receipt** you can che
 | Frontend | React (single-file SPA, no build step) |
 | Transcription | Parakeet via a self-hosted, OpenAI-compatible inference gateway (async) |
 | Episode catalog + transcripts | PostgreSQL |
-| Embeddings | `embeddinggemma` (768-dim) |
-| Vector database | Qdrant (cosine) |
-| Answer synthesis | Gemma 4 E4B |
+| Embeddings + vector search | **Pinecone** with integrated embedding (`llama-text-embed-v2`, 768-dim, cosine) |
+| Answer synthesis | a hosted LLM (OpenAI-compatible, e.g. Google AI Studio) |
 | Deployment | Docker + Caddy on a small VPS |
 
-> **The inference gateway** is a single, self-hosted, OpenAI-compatible endpoint that
-> serves chat, embeddings, and transcription behind one base URL and one token. The app
+> **Pinecone integrated embedding** means Pinecone hosts the embedding model and embeds
+> both the upserted chunk text and the search query — the app never computes vectors, and
+> search never competes with indexing. The self-hosted gateway is used only for
+> transcription. Each stage is a couple of environment variables.
+
+> **The inference gateway** is a self-hosted, OpenAI-compatible endpoint for
+> transcription (and, optionally, the answer step) behind one base URL and one token. The app
 > talks to it with the `openai` Python SDK — no managed OpenAI service is contacted.
 > Swap in any OpenAI-compatible endpoint by changing `LLM_BASE_URL` and `LLM_API_KEY`.
 
@@ -76,8 +82,7 @@ mcp_tools/
   mcp_server.py     MCP server — 6 tools for AI agents
 ui/
   index.html        React SPA (search, library, episode pages, live crawler panel)
-scripts/
-  migrate_to_embeddinggemma.py   one-off: re-embed old 1024-dim vectors → 768-dim
+schema.sql          PostgreSQL tables (catalog + transcripts)
 Dockerfile          Python 3.11-slim + ffmpeg
 docker-compose.yml  web + pipeline + caddy
 docs/MCP_GUIDE.md   MCP server documentation
@@ -108,13 +113,13 @@ python3 transcribe.py --episodes 5   # up to 5 per feed
 
 All configuration comes from the environment; see [`.env.example`](.env.example) for the
 full list (`DATABASE_URL`, `LLM_BASE_URL/KEY/MODEL`, `EMBEDDING_MODEL/DIMENSIONS`,
-`QDRANT_URL/KEY/COLLECTION`, `MCP_API_KEYS`, `MCP_ALLOWED_HOSTS`). Nothing sensitive is
+`PINECONE_API_KEY/HOST`, `ANSWER_LLM_BASE_URL/KEY/MODEL`, `MCP_API_KEYS`, `MCP_ALLOWED_HOSTS`). Nothing sensitive is
 committed to the repo. The `/mcp` endpoint rejects all requests unless `MCP_API_KEYS` is
 set.
 
 ## Deployment
 
-Docker Compose (web + pipeline + caddy) on a single droplet, with Postgres, Qdrant, and
+Docker Compose (web + pipeline + caddy) on a single droplet, with Postgres, Pinecone, and
 the gateway hosted elsewhere. See [DEPLOY.md](DEPLOY.md).
 
 ## Case study

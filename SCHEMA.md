@@ -1,9 +1,9 @@
 # Data model
 
-Podcast Search keeps facts in **PostgreSQL** and similarity in **Qdrant**. Postgres
-is the source of truth for the catalog and the raw transcripts; Qdrant holds the
-chunk vectors used for retrieval. Every vector carries enough metadata to trace a
-match back to the exact episode and moment.
+Podcast Search keeps facts in **PostgreSQL** and similarity in **Pinecone**. Postgres
+is the source of truth for the catalog and the raw transcripts; Pinecone holds the
+chunk vectors (which it embeds) used for retrieval. Every record carries enough metadata
+to trace a match back to the exact episode and moment.
 
 Create the Postgres tables once with [`schema.sql`](schema.sql). The table names
 can be **prefixed** (set `DB_TABLE_PREFIX`) so several projects can share one
@@ -59,39 +59,42 @@ Each element of `segments`:
 
 ---
 
-## Qdrant
+## Pinecone (integrated embedding)
 
-A single collection of chunk vectors.
+A single Pinecone index with an **integrated embedding model**, so the app upserts and
+queries **text** — Pinecone computes the vectors. We never send embeddings over the wire.
 
 | Property | Value |
 |----------|-------|
-| Collection | `podcast-search` (configurable via `QDRANT_COLLECTION`) |
-| Vector size | **768** (`embeddinggemma`) |
+| Index | `podsearch-space` (host via `PINECONE_HOST`) |
+| Embedding model | `llama-text-embed-v2` (integrated, hosted by Pinecone) |
+| Vector size | **768** |
 | Distance | **Cosine** |
-| Point ID | deterministic UUIDv5 of `<episode_id>_c<NNNN>` — re-indexing overwrites cleanly |
+| Embedded field | `text` (set by `PINECONE_TEXT_FIELD`) — Pinecone embeds this on upsert |
+| Record ID | deterministic string `<episode_id>_c<NNNN>` — re-indexing overwrites cleanly |
 
-### Payload (per chunk)
+### Record fields (per chunk)
 
-| Key | Type | Used for |
-|-----|------|----------|
-| `episode_id` | `str` | filter to a single episode; join back to Postgres |
+| Field | Type | Used for |
+|-------|------|----------|
+| `text` | `str` | **embedded by Pinecone**; also the excerpt shown / sent to the LLM |
+| `episode_id` | `str` | metadata filter to a single episode; join back to Postgres |
 | `episode_title` | `str` | display + keyword re-rank |
 | `podcast_title` | `str` | display |
-| `text` | `str` | the chunk text (the excerpt shown / sent to the LLM) |
 | `chunk_index` | `int` | order within the episode |
 | `start_time` | `float` | seconds — the "jump to the moment" timestamp |
 | `end_time` | `float` | seconds |
-| `speakers` | `list` | reserved (empty — see above) |
 
 ### How the two stores work together
 
-- **Search** embeds the query, pulls the top 25 from Qdrant by cosine, applies a
-  keyword-overlap re-rank and a dynamic threshold, then uses the surviving payloads
-  directly (no Postgres round-trip needed for the excerpt + timestamp).
-- **Episode view** filters Qdrant by `episode_id` (both `scroll` to enumerate all
-  chunks and `search` to rank the most relevant), and reads the full raw transcript
-  from `podcast_transcripts` when needed.
+- **Search** sends the question text to Pinecone (which embeds it), pulls the top 25 by
+  cosine, applies a keyword-overlap re-rank and a dynamic threshold, then uses the
+  returned fields directly (no Postgres round-trip for the excerpt + timestamp).
+- **Episode view / search-in-episode** queries Pinecone with an `episode_id` metadata
+  filter, and reads the full raw transcript from `podcast_transcripts` when needed.
 - **Catalog** (`list_episodes`, library grouping) is served from `podcast_episodes`
   via the cached reader.
+- **Re-index** (`transcribe.py --reindex`) rebuilds Pinecone from the saved Postgres
+  transcripts — no re-transcription — e.g. after changing the embedding model.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the design rationale.

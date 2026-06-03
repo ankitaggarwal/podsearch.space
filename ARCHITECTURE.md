@@ -46,34 +46,35 @@ flowchart TD
 ## 2. Chunk, embed & store
 
 The transcript is grouped into ~1,000-character passages — big enough to hold a thought,
-small enough to pinpoint — each carrying its timestamps forward. Passages are embedded
-with `embeddinggemma` (768-dim, batched 64 at a time) and upserted to Qdrant with their
-metadata attached.
+small enough to pinpoint — each carrying its timestamps forward. Each passage is upserted
+to **Pinecone as a text record**; Pinecone's integrated embedding model
+(`llama-text-embed-v2`, 768-dim) vectorizes the text on the way in, so the app never
+computes embeddings itself.
 
 ```mermaid
 flowchart TD
     TX["Transcript segments"] --> CH["Chunk ≈1,000 chars<br/>(timestamps carried forward)"]
-    CH --> EMB["Embed (embeddinggemma, 768-dim, batch 64)"]
-    EMB --> Q["Upsert to Qdrant<br/>vector + payload: episode, show, text, time"]
+    CH --> UP["Upsert text + metadata to Pinecone"]
+    UP --> EMB["Pinecone integrated model embeds it<br/>(llama-text-embed-v2, 768-dim)"]
 ```
 
-Point IDs are a deterministic UUIDv5 of `<episode_id>_c<NNNN>`, so re-indexing an
-episode overwrites its chunks cleanly rather than duplicating them. See
-[SCHEMA.md](SCHEMA.md) for the exact payload.
+Record IDs are a deterministic string `<episode_id>_c<NNNN>`, so re-indexing an episode
+overwrites its chunks cleanly rather than duplicating them. See [SCHEMA.md](SCHEMA.md)
+for the record shape.
 
 ---
 
 ## 3. Retrieve & answer
 
-The question is embedded and matched against Qdrant. Pure vector search understands
+The question is embedded and matched against Pinecone. Pure vector search understands
 meaning but underweights exact tokens, so a lightweight keyword boost is layered on top,
 and a dynamic threshold trims to the keepers. The surviving excerpts go to the LLM under
 a strict grounding prompt.
 
 ```mermaid
 flowchart TD
-    U["Question"] --> E["Embed query"]
-    E --> V["Qdrant: top 25 by cosine"]
+    U["Question"] --> E["Pinecone embeds the query"]
+    E --> V["Pinecone: top 25 by cosine"]
     V --> G{"Best score ≥ 0.25?"}
     G -->|"no"| SAY["Say: not discussed in these episodes"]
     G -->|"yes"| RR["Re-rank: vector + keyword boost (≤ +0.15)"]
@@ -110,22 +111,24 @@ flowchart TD
     end
     WEB["Web app /api/search"] --> ENG
     MCP["MCP server (6 tools)"] --> ENG
-    ENG --> Q["Qdrant"]
-    ENG --> PG["PostgreSQL"]
-    ENG --> GWc["Inference gateway"]
+    ENG --> Q["Pinecone (embeddings + search)"]
+    ENG --> PG["PostgreSQL (catalog + transcripts)"]
+    ENG --> GWc["Transcription gateway"]
+    ENG --> ANS["Answer LLM (hosted)"]
     MCP -. raw context, no LLM .-> AG["Claude / Cursor agent"]
 ```
 
 ---
 
-## One endpoint for three modalities
+## The right tool for each stage
 
-Speech-to-text, embeddings, and answer generation are all served by a single
-self-hosted, OpenAI-compatible inference gateway — one base URL, one token, behind the
-`openai` Python SDK. That buys **cost control** (runs on a ~$5/mo VPS plus the gateway,
-no per-token bill), **data control** (transcripts and queries stay on owned infra), and
-**portability** (point `LLM_BASE_URL`/`LLM_API_KEY` at any OpenAI-compatible endpoint).
-The models are commodities; the retrieval quality is the moat.
+Each stage runs where it's cheapest and most reliable, wired together by config:
+**transcription** stays on a self-hosted Parakeet gateway (the heavy, high-volume audio
+work — no per-minute API bill); **embeddings + vector search** are handed to
+**Pinecone's integrated embedding** (it embeds the chunk on upsert and the query on
+search, so there's no embedding service to run, and search never competes with
+indexing); and **answer generation** runs on a fast hosted LLM. Every stage is a couple
+of environment variables. The models are commodities; the retrieval quality is the moat.
 
 ## Engineering for the real world
 
@@ -140,7 +143,7 @@ The models are commodities; the retrieval quality is the moat.
 
 ## Summary
 
-PostgreSQL for the facts, Qdrant for semantic similarity, a self-hosted gateway for
-transcription/embeddings/answers, FastAPI + a React SPA on top, and the same engine
-exposed to both people (web) and agents (MCP). See [SCHEMA.md](SCHEMA.md) for the data
-model and [docs/MCP_GUIDE.md](docs/MCP_GUIDE.md) for the agent surface.
+PostgreSQL for the facts, Pinecone for embeddings + semantic similarity, a self-hosted
+gateway for transcription, a hosted LLM for answers, FastAPI + a React SPA on top, and
+the same engine exposed to both people (web) and agents (MCP). See [SCHEMA.md](SCHEMA.md)
+for the data model and [docs/MCP_GUIDE.md](docs/MCP_GUIDE.md) for the agent surface.

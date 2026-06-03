@@ -6,7 +6,7 @@
 
 **Transport:** stdio (stdin/stdout JSON-RPC) or SSE (when mounted in FastAPI)
 **Auth:** Cloud endpoint requires `X-API-Key` header
-**Stack:** Qdrant (self-hosted vector DB) + `embeddinggemma` embeddings + PostgreSQL (episode catalog & transcripts) + `gemma4:e4b` answer synthesis — embeddings and chat both served by a self-hosted, OpenAI-compatible inference gateway
+**Stack:** Pinecone with integrated embedding (`llama-text-embed-v2`, 768-dim — embeds documents and queries) + PostgreSQL (episode catalog & transcripts) + a hosted LLM for answer synthesis. Transcription runs on a self-hosted gateway.
 
 ## Configuration
 
@@ -58,7 +58,7 @@ Returns the full transcript of a specific episode with timestamps. Supports part
 
 ### 4. `search_in_episode(episode_title, query, top_k=5)`
 
-Searches within a single episode. Same as `search_podcasts` but scoped to one episode via a Qdrant payload filter.
+Searches within a single episode. Same as `search_podcasts` but scoped to one episode via a Pinecone metadata filter.
 
 ### 5. `find_related_episodes(query)`
 
@@ -79,8 +79,7 @@ MCP Client (Claude Code / Desktop / Cursor)
   | stdio or SSE
   v
 mcp_tools/mcp_server.py (FastMCP)
-  |-- Inference gateway /v1/embeddings (embeddinggemma, 768d)
-  |-- Qdrant (vector search, self-hosted)
+  |-- Pinecone (integrated embedding + vector search; llama-text-embed-v2, 768d)
   +-- PostgreSQL (episode catalog & transcripts)
 ```
 

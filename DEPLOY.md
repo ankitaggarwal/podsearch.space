@@ -9,7 +9,7 @@ three small containers on one droplet:
 | `pipeline` | The indexer, looping continuously (discover → transcribe → embed) |
 | `caddy`    | Reverse proxy that gives the site free automatic HTTPS |
 
-PostgreSQL, Qdrant, and the inference gateway live **elsewhere** and are configured
+PostgreSQL, Pinecone, and the inference gateway live **elsewhere** and are configured
 through `.env`. They are **not** run on the droplet.
 
 ---
@@ -44,8 +44,8 @@ cp .env.example .env
 nano .env
 ```
 
-At minimum: `DATABASE_URL`, `LLM_BASE_URL`, `LLM_API_KEY`, `QDRANT_URL`,
-`QDRANT_API_KEY`, `QDRANT_COLLECTION`, and `MCP_API_KEYS`.
+At minimum: `DATABASE_URL`, `LLM_BASE_URL`, `LLM_API_KEY` (transcription),
+`PINECONE_API_KEY`, `PINECONE_HOST`, `ANSWER_LLM_*` (the answer model), and `MCP_API_KEYS`.
 
 ## Point the domain at the server
 
@@ -111,6 +111,6 @@ docker compose up -d               # start everything (no rebuild)
   into the shared `audio` volume. To let the gateway fetch them over HTTPS, set
   `LIVE_AUDIO_BASE_URL` and expose that path (e.g. an extra `handle_path` in the
   Caddyfile). Most feeds never hit this path.
-- **Running Qdrant on the droplet (optional):** if you'd rather self-host Qdrant
-  alongside the app, add a `qdrant/qdrant` service to `docker-compose.yml` and point
-  `QDRANT_URL` at `http://qdrant:6333`.
+- **Vector store:** Pinecone is a managed service — nothing to run on the droplet. Set
+  `PINECONE_API_KEY` and `PINECONE_HOST` in `.env`; Pinecone's integrated embedding
+  handles both indexing and query vectors.
