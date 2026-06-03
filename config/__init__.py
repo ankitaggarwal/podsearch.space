@@ -72,34 +72,20 @@ MCP_API_KEYS = os.getenv("MCP_API_KEYS", "")
 # in real time. Empty = relay disabled.
 LIVE_RELAY_URL = os.getenv("LIVE_RELAY_URL", "")
 
-# Podcasts
+# Podcasts — a product-management & design shelf. Ordered shortest-episode-first
+# so the index fills quickly and stays on-topic (the crawler interleaves shows
+# round-robin, so the earliest, shortest episodes land first).
 DEFAULT_PODCAST_URLS = [
-    "https://rss.art19.com/tim-ferriss-show",                                                        # The Tim Ferriss Show
-    "https://feeds.megaphone.fm/pivot",                                                              # Pivot – Kara Swisher & Scott Galloway
-    "https://allinchamathjason.libsyn.com/rss",                                                      # All-In Podcast
-    "https://rss2.flightcast.com/xmsftuzjjykcmqwolaqn6mdn",                                         # The Diary of a CEO – Steven Bartlett
-    "https://thetwentyminutevc.libsyn.com/rss",                                                      # The Twenty Minute VC (20VC)
-    "https://feeds.megaphone.fm/DSLLC6297708582",                                                    # Founders – David Senra
-    "https://anchor.fm/s/8c1524bc/podcast/rss",                                                      # Y Combinator Startup Podcast
-    "https://feeds.megaphone.fm/HS2300184645",                                                       # My First Million (~852 eps)
-    "https://feeds.transistor.fm/acquired",                                                          # Acquired (~213 eps)
-    "https://feeds.transistor.fm/the-indie-hackers-podcast",                                         # Indie Hackers (~290 eps)
-    "https://feeds.castos.com/mqv6",                                                                 # Startups for the Rest of Us (~329 eps)
-    "https://feeds.simplecast.com/iCV67fGr",                                                         # Product Hunt Radio (~215 eps)
-    "https://theknowledgeproject.libsyn.com/rss",                                                    # The Knowledge Project (~274 eps)
-    "https://lexfridman.com/feed/podcast/",                                                          # Lex Fridman (~495 eps)
-    "https://saastr.libsyn.com/rss",                                                                 # SaaStr (~855 eps)
-    "https://podcasts.apple.com/us/podcast/masters-of-scale/id1227971746",                           # Masters of Scale
-    "https://podcasts.apple.com/us/podcast/lennys-podcast-product-career-growth/id1627920305",       # Lenny's Podcast
-    "https://anchor.fm/s/ff7e9014/podcast/rss",                                                      # Product Thinking – Melissa Perri
-    "https://rss.buzzsprout.com/90361.rss",                                                          # The Product Podcast – Product School
+    "https://podcasts.apple.com/us/podcast/this-is-product-management/id975284403",                  # This is Product Management (~20 min)
+    "https://rss.art19.com/intercom-on-product",                                                     # Intercom on Product
+    "https://feeds.transistor.fm/product-people",                                                    # Product People
+    "https://feeds.simplecast.com/iCV67fGr",                                                         # Product Hunt Radio
     "https://feed.podbean.com/oneknightinproduct/feed.xml",                                          # One Knight in Product
     "https://feeds.buzzsprout.com/1779875.rss",                                                      # The Product Manager
-    "https://podcasts.apple.com/us/podcast/this-is-product-management/id975284403",                  # This is Product Management
-    "https://podcasts.apple.com/us/podcast/how-i-built-this-with-guy-raz/id1150510297",              # How I Built This
-    "https://rss.art19.com/intercom-on-product",                                                     # Intercom on Product
-    "https://feeds.simplecast.com/4MvgQ73R",                                                        # UI Breakfast
-    "https://feeds.transistor.fm/product-people",                                                    # Product People
+    "https://feeds.simplecast.com/4MvgQ73R",                                                         # UI Breakfast — UX + product
+    "https://rss.buzzsprout.com/90361.rss",                                                          # The Product Podcast — Product School
+    "https://anchor.fm/s/ff7e9014/podcast/rss",                                                      # Product Thinking — Melissa Perri
+    "https://podcasts.apple.com/us/podcast/lennys-podcast-product-career-growth/id1627920305",       # Lenny's Podcast — product, growth, careers
 ]
 
 

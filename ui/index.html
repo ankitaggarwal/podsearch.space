@@ -215,7 +215,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .pipe-hero{padding:54px 0 10px;text-align:center}
 .pipe-hero h1{font-family:var(--font-display);font-weight:600;font-size:clamp(32px,4.6vw,52px);letter-spacing:-.025em;line-height:1.04}
 .pipe-hero p{color:var(--ink-2);font-size:17px;font-weight:500;max-width:600px;margin:16px auto 0}
-.funnel{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin:38px 0}
+.funnel{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:38px 0}
 .fstep{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:22px 18px;position:relative;text-align:center}
 .fstep .fn{font-family:var(--font-display);font-weight:600;font-size:clamp(24px,3vw,34px);line-height:1;letter-spacing:-.02em}
 .fstep .fl{font-size:12.5px;color:var(--ink-2);font-weight:600;margin-top:8px}
@@ -533,9 +533,8 @@ function Pipeline({stats}){
     tick();const t=setInterval(tick,4000);return()=>{on=false;clearInterval(t)};},[]);
   const s=stats||{};
   const funnel=[
-    ['b1','feeds',s.feeds,'RSS sources'],
-    ['b2','discovered',s.feeds?'12.6k':'—','episodes found'],
-    ['b3','transcribed',s.episodes,'audio → text'],
+    ['b1','feeds',s.feeds,'product RSS sources'],
+    ['b3','transcribed',s.episodes,'episodes · audio → text'],
     ['b4','chunks',s.chunks,'~1k-char passages'],
     ['b5','vectors',s.vectors,'searchable in Qdrant'],
   ];
