@@ -72,12 +72,16 @@ class PodcastEngine:
     def __init__(self):
         # One OpenAI-SDK client points at the gateway for BOTH chat completions and embeddings.
         # No actual OpenAI service is contacted — the SDK is the standard wire-format client.
-        self.llm_client = OpenAI(api_key=LLM_API_KEY, base_url=f"{LLM_BASE_URL}/v1")
+        # Bounded timeout + no SDK retries so a busy gateway can't make a search
+        # request hang for minutes (the default is 600s with retries).
+        self.llm_client = OpenAI(api_key=LLM_API_KEY, base_url=f"{LLM_BASE_URL}/v1",
+                                 timeout=25.0, max_retries=1)
         # Answer-synthesis client: a separate, faster endpoint if configured (e.g.
         # Google AI Studio), else the same local gateway. Embeddings + transcription
         # always use self.llm_client (the local gateway).
         if ANSWER_LLM_BASE_URL:
-            self.answer_client = OpenAI(api_key=ANSWER_LLM_API_KEY, base_url=ANSWER_LLM_BASE_URL)
+            self.answer_client = OpenAI(api_key=ANSWER_LLM_API_KEY, base_url=ANSWER_LLM_BASE_URL,
+                                        timeout=30.0, max_retries=1)
             self.answer_model = ANSWER_LLM_MODEL
             logger.info("Answer synthesis on external endpoint: model=%s", ANSWER_LLM_MODEL)
         else:
