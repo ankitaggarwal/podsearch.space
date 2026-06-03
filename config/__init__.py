@@ -76,7 +76,7 @@ LIVE_RELAY_URL = os.getenv("LIVE_RELAY_URL", "")
 # so the index fills quickly and stays on-topic (the crawler interleaves shows
 # round-robin, so the earliest, shortest episodes land first).
 DEFAULT_PODCAST_URLS = [
-    "https://podcasts.apple.com/us/podcast/this-is-product-management/id975284403",                  # This is Product Management (~20 min)
+    "https://podcasts.apple.com/us/podcast/this-is-product-management/id975284403",                  # This is Product Management
     "https://rss.art19.com/intercom-on-product",                                                     # Intercom on Product
     "https://feeds.transistor.fm/product-people",                                                    # Product People
     "https://feeds.simplecast.com/iCV67fGr",                                                         # Product Hunt Radio
@@ -86,6 +86,9 @@ DEFAULT_PODCAST_URLS = [
     "https://rss.buzzsprout.com/90361.rss",                                                          # The Product Podcast — Product School
     "https://anchor.fm/s/ff7e9014/podcast/rss",                                                      # Product Thinking — Melissa Perri
     "https://podcasts.apple.com/us/podcast/lennys-podcast-product-career-growth/id1627920305",       # Lenny's Podcast — product, growth, careers
+    "https://thetwentyminutevc.libsyn.com/rss",                                                      # The Twenty Minute VC (20VC) — product & startups
+    "https://podcasts.apple.com/us/podcast/masters-of-scale/id1227971746",                           # Masters of Scale — scaling & product
+    "https://api.substack.com/feed/podcast/69345.rss",                                               # Dwarkesh Podcast
 ]
 
 
