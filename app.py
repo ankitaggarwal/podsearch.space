@@ -526,7 +526,56 @@ def episode_detail(episode_id: str):
         "title": ep["title"],
         "podcast_title": ep["podcast_title"],
         "image_url": ep.get("image_url", ""),
+        "audio_url": ep.get("audio_url", ""),   # link to the original episode
     }
+
+
+@app.get("/api/episodes/{episode_id}/summary")
+def episode_summary(episode_id: str):
+    """A short, grounded overview for the episode page. Best-effort: if the LLM
+    gateway is unavailable, return an empty summary so the UI degrades gracefully
+    (it falls back to 'listen to the original')."""
+    try:
+        return {"summary": engine.summarize_episode(episode_id)}
+    except Exception as e:
+        logger.warning("summary failed for %s: %s", episode_id, e)
+        return {"summary": ""}
+
+
+@app.get("/api/episodes/{episode_id}/transcript")
+def episode_transcript(episode_id: str):
+    """The full raw transcript, joined into plain text. Shown behind a disclosure
+    on the episode page; the primary surface is the summary + a link to the source."""
+    segments = engine.get_transcript_segments(episode_id) or []
+    text = " ".join(s.get("text", "") for s in segments if isinstance(s, dict)).strip()
+    return {"episode_id": episode_id, "text": text, "segment_count": len(segments)}
+
+
+@app.get("/api/stats")
+def stats():
+    """Library + pipeline stats for the Pipeline page. Reads Postgres + Qdrant only,
+    so it works even when the transcription gateway is down."""
+    from config import EPISODES_TABLE, DEFAULT_PODCAST_URLS
+    out = {
+        "feeds": len(DEFAULT_PODCAST_URLS),
+        "episodes": 0, "chunks": 0, "shows": 0, "vectors": 0, "hours": 0.0,
+    }
+    try:
+        with engine._pg_cur() as cur:
+            cur.execute(
+                f"SELECT COUNT(*), COALESCE(SUM(chunk_count),0), COUNT(DISTINCT podcast_title) "
+                f"FROM {EPISODES_TABLE}")
+            row = cur.fetchone()
+            out["episodes"], out["chunks"], out["shows"] = int(row[0]), int(row[1]), int(row[2])
+    except Exception as e:
+        logger.warning("stats pg query failed: %s", e)
+    try:
+        out["vectors"] = engine.qdrant.get_collection(engine.collection).points_count or 0
+    except Exception as e:
+        logger.warning("stats qdrant query failed: %s", e)
+    # ~1,000-char chunks ≈ a couple of spoken minutes each; a friendly rough total.
+    out["hours"] = round(out["chunks"] * 2.0 / 60.0, 1)
+    return out
 
 
 # ── Static files ────────────────────────────────────────────────────────

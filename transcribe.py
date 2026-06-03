@@ -152,10 +152,11 @@ class PodcastEngine:
         """Load episode catalog from PostgreSQL. Called on startup and on TTL expiry."""
         try:
             with self._pg_cur() as cur:
-                cur.execute(f"SELECT id, title, podcast_title, image_url FROM {EPISODES_TABLE}")
+                cur.execute(f"SELECT id, title, podcast_title, image_url, audio_url FROM {EPISODES_TABLE}")
                 rows = cur.fetchall()
             self._episodes_cache = {
-                row[0]: {"title": row[1], "podcast_title": row[2], "image_url": row[3] or ""}
+                row[0]: {"title": row[1], "podcast_title": row[2],
+                         "image_url": row[3] or "", "audio_url": row[4] or ""}
                 for row in rows
             }
             self._episodes_cache_time = _time.time()
@@ -406,6 +407,33 @@ class PodcastEngine:
         except Exception as e:
             logger.warning("Could not load transcript segments: %s", e)
         return None
+
+    def summarize_episode(self, episode_id: str) -> str:
+        """A short, grounded summary of an episode for its detail page — built from
+        an evenly-spaced sample of the episode's own chunks (so it reads the whole
+        arc, not just the intro). Raises on LLM failure; the caller degrades."""
+        flt = Filter(must=[FieldCondition(key="episode_id", match=MatchValue(value=episode_id))])
+        points, _ = self.qdrant.scroll(collection_name=self.collection, scroll_filter=flt,
+                                        limit=400, with_payload=True, with_vectors=False)
+        if not points:
+            return ""
+        points.sort(key=lambda p: int((p.payload or {}).get("chunk_index", 0) or 0))
+        # Sample up to 8 evenly-spaced chunks for broad coverage in a small prompt.
+        step = max(1, len(points) // 8)
+        sample = [p.payload.get("text", "") for p in points[::step]][:8]
+        title = points[0].payload.get("episode_title", "this episode")
+        context = "\n\n".join(sample)
+        resp = self.llm_client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content":
+                 "You write a concise, faithful overview of a podcast episode from excerpts of its own "
+                 "transcript. 2-3 sentences, no preamble, no invented facts. Describe what's discussed."},
+                {"role": "user", "content": f'Episode: "{title}"\n\nTranscript excerpts:\n{context}\n\nWrite the overview:'},
+            ],
+            max_tokens=220, temperature=0.3,
+        )
+        return (resp.choices[0].message.content or "").strip()
 
     # ── Hybrid Search ───────────────────────────────────────────────────
     #
