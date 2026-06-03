@@ -59,10 +59,15 @@ ANSWER_LLM_BASE_URL = os.getenv("ANSWER_LLM_BASE_URL", "")
 ANSWER_LLM_API_KEY  = os.getenv("ANSWER_LLM_API_KEY", "")
 ANSWER_LLM_MODEL    = os.getenv("ANSWER_LLM_MODEL", LLM_MODEL)
 
-# Qdrant — vector store.
-QDRANT_URL        = os.getenv("QDRANT_URL", "http://localhost:6333")
-QDRANT_API_KEY    = os.getenv("QDRANT_API_KEY", "")
-QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "podcast-search")  # 768-dim, embeddinggemma
+# Vector store + search — Pinecone with INTEGRATED EMBEDDING. Pinecone hosts the
+# embedding model (e.g. llama-text-embed-v2) and embeds both the upserted chunk
+# text AND the search query, so the app never computes embeddings itself. One
+# index, one model, consistent space.
+PINECONE_API_KEY     = os.getenv("PINECONE_API_KEY", "")
+PINECONE_HOST        = os.getenv("PINECONE_HOST", "")          # the index host URL
+PINECONE_NAMESPACE   = os.getenv("PINECONE_NAMESPACE", "__default__")
+PINECONE_API_VERSION = os.getenv("PINECONE_API_VERSION", "2025-04")
+PINECONE_TEXT_FIELD  = os.getenv("PINECONE_TEXT_FIELD", "text")  # field Pinecone embeds
 
 # Transcription via /v1/transcribe-url has a 50 MB cap on the downloaded audio.
 # For oversize episodes, the engine pre-compresses with ffmpeg to 16 kHz mono
@@ -154,13 +159,10 @@ FORMATTING:
 def validate_config():
     """Check required config at startup. Returns list of missing vars."""
     required = {
-        "LLM_BASE_URL":     LLM_BASE_URL,
-        "LLM_API_KEY":      LLM_API_KEY,
-        "EMBEDDING_MODEL":   EMBEDDING_MODEL,
-        "LLM_MODEL":         LLM_MODEL,
-        "QDRANT_URL":        QDRANT_URL,
-        "QDRANT_API_KEY":    QDRANT_API_KEY,
-        "QDRANT_COLLECTION": QDRANT_COLLECTION,
+        "LLM_BASE_URL":      LLM_BASE_URL,   # transcription gateway
+        "LLM_API_KEY":       LLM_API_KEY,
+        "PINECONE_API_KEY":  PINECONE_API_KEY,
+        "PINECONE_HOST":     PINECONE_HOST,
         "DATABASE_URL":      DATABASE_URL,
     }
     missing = [k for k, v in required.items() if not v]

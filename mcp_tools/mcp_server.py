@@ -29,8 +29,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
-from qdrant_client.models import Filter, FieldCondition, MatchValue
-from config import EMBEDDING_MODEL
 
 # Hosts allowed to reach the SSE endpoint (DNS-rebinding protection). Add your
 # deployment domain via MCP_ALLOWED_HOSTS (comma-separated); localhost is always
@@ -62,38 +60,20 @@ def _match_episode(title_query):
     ]
 
 
-def _strip_episode_prefix(text):
-    if text.startswith("Episode:"):
-        return text.split("\n\n", 1)[-1]
-    return text
-
-
-def _embed_query(engine, query):
-    """Embed a query string via the shared inference gateway (embeddinggemma).
-    Returns (embedding, None) on success, (None, error_message) on failure —
-    tools surface a graceful error instead of crashing."""
+def _search(engine, query, top_k=10, episode_id=None):
+    """Run a Pinecone text search via the engine (Pinecone embeds the query).
+    Returns (matches, None) on success or (None, error_message) on failure, so a
+    backend outage surfaces as a readable message instead of an exception. Each
+    match is a dict: {id, score, text, episode_id, episode_title, podcast_title, ...}."""
     try:
-        resp = engine.llm_client.embeddings.create(model=EMBEDDING_MODEL, input=[query])
-        return resp.data[0].embedding, None
-    except Exception as e:
-        return None, f"Embedding service unavailable: {str(e)[:120]}"
-
-
-def _safe_query(engine, query_vector, limit=10, query_filter=None):
-    """Wrap qdrant.query_points() so a vector-DB outage surfaces as a user-readable
-    message instead of an unhandled exception. Returns (list[ScoredPoint], None)
-    on success, (None, error_message) on failure."""
-    try:
-        response = engine.qdrant.query_points(
-            collection_name=engine.collection,
-            query=query_vector,
-            limit=limit,
-            query_filter=query_filter,
-            with_payload=True,
-        )
-        return response.points, None
+        return engine._pc_search(query, top_k=top_k, episode_id=episode_id), None
     except Exception as e:
         return None, f"Search service unavailable: {str(e)[:120]}"
+
+
+def _relevance(score):
+    # The integrated embedding model's scores run lower than raw cosine.
+    return "HIGH" if score >= 0.35 else "MEDIUM" if score >= 0.20 else "LOW"
 
 
 # Each @mcp.tool() registers a function as a tool the agent can call. FastMCP turns
@@ -104,46 +84,27 @@ def _safe_query(engine, query_vector, limit=10, query_filter=None):
 def search_podcasts(query: str, top_k: int = 10) -> str:
     """Search across all podcast transcripts for answers to a question. Use this for any product, startup, or business question — it finds the most relevant transcript excerpts with episode titles, timestamps, and relevance scores. Returns raw context for you to synthesize an answer from."""
     engine = _get_engine()
-
-    query_embedding, err = _embed_query(engine, query)
+    results, err = _search(engine, query, top_k=top_k)
     if err:
         return err
-
-    results, err = _safe_query(engine, query_embedding, limit=top_k)
-    if err:
-        return err
-
-    if not results or results[0].score < 0.25:
+    if not results or results[0]["score"] < 0.08:
         return "No relevant content found for this query."
 
     parts = []
-    for i, match in enumerate(results, 1):
-        if match.score < 0.20:
-            continue
-        meta = match.payload or {}
-        episode = meta.get("episode_title", "Unknown")
-        text = meta.get("text", "")
-        start_time = meta.get("start_time")
-        end_time = meta.get("end_time")
-        speakers = meta.get("speakers", [])
-        relevance = "HIGH" if match.score >= 0.5 else "MEDIUM" if match.score >= 0.35 else "LOW"
-
+    for i, m in enumerate(results, 1):
+        episode = m.get("episode_title", "Unknown")
+        text = m.get("text", "")
+        start_time, end_time = m.get("start_time"), m.get("end_time")
         time_str = ""
         if start_time is not None and end_time is not None:
-            s_min, s_sec = int(start_time // 60), int(start_time % 60)
-            e_min, e_sec = int(end_time // 60), int(end_time % 60)
+            s_min, s_sec = int(float(start_time) // 60), int(float(start_time) % 60)
+            e_min, e_sec = int(float(end_time) // 60), int(float(end_time) % 60)
             time_str = f"\nTimestamp: {s_min}:{s_sec:02d} - {e_min}:{e_sec:02d}"
-
-        speaker_str = ""
-        if speakers:
-            speaker_str = f"\nSpeakers: {', '.join(str(s) for s in speakers)}"
-
         parts.append(
-            f"[{i}] (Relevance: {relevance}, Score: {match.score:.3f})\n"
-            f'Episode: "{episode}"{time_str}{speaker_str}\n'
+            f"[{i}] (Relevance: {_relevance(m['score'])}, Score: {m['score']:.3f})\n"
+            f'Episode: "{episode}"{time_str}\n'
             f"Content: {text}"
         )
-
     return "\n\n---\n\n".join(parts) if parts else "No relevant content found for this query."
 
 
@@ -199,46 +160,22 @@ def search_in_episode(episode_title: str, query: str, top_k: int = 5) -> str:
 
     episode_id, title, _ = matches[0]
     engine = _get_engine()
-
-    query_embedding, err = _embed_query(engine, query)
+    results, err = _search(engine, query, top_k=top_k, episode_id=episode_id)
     if err:
         return err
-
-    results, err = _safe_query(
-        engine,
-        query_embedding,
-        limit=top_k,
-        query_filter=Filter(must=[FieldCondition(
-            key="episode_id", match=MatchValue(value=episode_id)
-        )]),
-    )
-    if err:
-        return err
-
     if not results:
         return f"No relevant content found for '{query}' in '{title}'."
 
     parts = [f"Results from: **{title}**\n"]
-    for i, match in enumerate(results, 1):
-        meta = match.payload or {}
-        text = meta.get("text", "")
-        start_time = meta.get("start_time")
-        end_time = meta.get("end_time")
-        speakers = meta.get("speakers", [])
-        relevance = "HIGH" if match.score >= 0.5 else "MEDIUM" if match.score >= 0.35 else "LOW"
-
+    for i, m in enumerate(results, 1):
+        text = m.get("text", "")
+        start_time, end_time = m.get("start_time"), m.get("end_time")
         time_str = ""
         if start_time is not None and end_time is not None:
-            s_min, s_sec = int(start_time // 60), int(start_time % 60)
-            e_min, e_sec = int(end_time // 60), int(end_time % 60)
+            s_min, s_sec = int(float(start_time) // 60), int(float(start_time) % 60)
+            e_min, e_sec = int(float(end_time) // 60), int(float(end_time) % 60)
             time_str = f" | {s_min}:{s_sec:02d}-{e_min}:{e_sec:02d}"
-
-        speaker_str = ""
-        if speakers:
-            speaker_str = f" | Speakers: {', '.join(str(s) for s in speakers)}"
-
-        parts.append(f"[{i}] (Relevance: {relevance}{time_str}{speaker_str})\n{text}")
-
+        parts.append(f"[{i}] (Relevance: {_relevance(m['score'])}{time_str})\n{text}")
     return "\n\n---\n\n".join(parts)
 
 
@@ -246,47 +183,33 @@ def search_in_episode(episode_title: str, query: str, top_k: int = 5) -> str:
 def find_related_episodes(query: str) -> str:
     """Find which episodes discuss a topic, ranked by how much they cover it. Use this when the user asks "which episodes talk about X?" or wants recommendations — unlike search_podcasts which returns excerpts, this returns a ranked list of episodes."""
     engine = _get_engine()
-
-    query_embedding, err = _embed_query(engine, query)
+    # Pull a wide set, then group by episode in Python — rank each episode by its
+    # single best-matching chunk (a cleaner signal than sum-of-scores, which biases
+    # toward long episodes with many mid hits).
+    results, err = _search(engine, query, top_k=40)
     if err:
         return err
-
-    # Server-side group-by — Qdrant returns top-K episodes with their best
-    # chunks already grouped, replacing 30 lines of Python aggregation. Episodes
-    # are ranked by their single best matching chunk (cleaner "relevance" signal
-    # than sum-of-scores, which biased toward long episodes with many mid hits).
-    try:
-        response = engine.qdrant.query_points_groups(
-            collection_name=engine.collection,
-            query=query_embedding,
-            group_by="episode_id",
-            limit=15,
-            group_size=5,
-            score_threshold=0.20,
-            with_payload=True,
-        )
-    except Exception as e:
-        return f"Search service unavailable: {str(e)[:120]}"
-
-    groups = response.groups
-    if not groups or groups[0].hits[0].score < 0.25:
+    if not results or results[0]["score"] < 0.1:
         return f"No episodes found related to '{query}'."
 
+    by_ep = {}  # episode_id -> {title, best, count, best_text}
+    for m in results:
+        eid = m.get("episode_id", "")
+        g = by_ep.setdefault(eid, {"title": m.get("episode_title", "Unknown"),
+                                   "best": 0, "count": 0, "best_text": ""})
+        g["count"] += 1
+        if m["score"] > g["best"]:
+            g["best"], g["best_text"] = m["score"], m.get("text", "")
+    ranked = sorted(by_ep.values(), key=lambda g: g["best"], reverse=True)[:15]
+
     parts = [f'Episodes related to: "{query}"\n']
-    for i, group in enumerate(groups, 1):
-        top_hit = group.hits[0]
-        meta = top_hit.payload or {}
-        title = meta.get("episode_title", "Unknown")
-        best_score = top_hit.score
-        text = _strip_episode_prefix(meta.get("text", ""))
-        excerpt = text[:300] + "..." if len(text) > 300 else text
-        relevance = "HIGH" if best_score >= 0.5 else "MEDIUM" if best_score >= 0.35 else "LOW"
+    for i, g in enumerate(ranked, 1):
+        excerpt = g["best_text"][:300] + "..." if len(g["best_text"]) > 300 else g["best_text"]
         parts.append(
-            f"{i}. **{title}**\n"
-            f"   Relevance: {relevance} | {len(group.hits)} matching sections\n"
+            f"{i}. **{g['title']}**\n"
+            f"   Relevance: {_relevance(g['best'])} | {g['count']} matching sections\n"
             f"   Preview: {excerpt}"
         )
-
     return "\n\n".join(parts)
 
 

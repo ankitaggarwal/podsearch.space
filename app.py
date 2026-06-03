@@ -267,10 +267,10 @@ def health():
     they can carry host fragments in psycopg2's exceptions."""
     checks = {"api": "ok"}
     try:
-        engine.qdrant.get_collection(collection_name=engine.collection)
-        checks["qdrant"] = "ok"
+        engine._pc_vector_count()
+        checks["pinecone"] = "ok"
     except Exception:
-        checks["qdrant"] = "error"
+        checks["pinecone"] = "error"
     try:
         from config import EPISODES_TABLE
         with engine._pg_cur() as cur:
@@ -568,9 +568,9 @@ def stats():
     except Exception as e:
         logger.warning("stats pg query failed: %s", e)
     try:
-        out["vectors"] = engine.qdrant.get_collection(engine.collection).points_count or 0
+        out["vectors"] = engine._pc_vector_count()
     except Exception as e:
-        logger.warning("stats qdrant query failed: %s", e)
+        logger.warning("stats pinecone query failed: %s", e)
     # ~1,000-char chunks ≈ a couple of spoken minutes each; a friendly rough total.
     out["hours"] = round(out["chunks"] * 2.0 / 60.0, 1)
     return out

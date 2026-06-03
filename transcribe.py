@@ -8,11 +8,11 @@ project, read this one. It does four jobs, in order:
                    and decide which episodes are worth processing (dedup + ordering).
     2. TRANSCRIBE— send audio to a self-hosted, OpenAI-compatible inference gateway
                    (Parakeet) and get back text with per-utterance timestamps.
-    3. INDEX     — split the transcript into ~1,000-char chunks, embed each chunk as a
-                   768-dim vector (embeddinggemma), and upsert it to Qdrant. The raw
-                   transcript is also saved to PostgreSQL as a safety net.
-    4. SEARCH    — given a question, embed it, pull the nearest chunks from Qdrant,
-                   re-rank them (hybrid: vector similarity + keyword overlap), and ask
+    3. INDEX     — split the transcript into ~1,000-char chunks and upsert each as a
+                   text record to Pinecone, whose integrated embedding model vectorizes
+                   it. The raw transcript is also saved to PostgreSQL as a safety net.
+    4. SEARCH    — given a question, Pinecone embeds it and returns the nearest chunks;
+                   we re-rank them (hybrid: semantic score + keyword overlap) and ask
                    the LLM to write an answer using ONLY those chunks.
 
 Design principle — "grounded, not generative": the LLM is treated as a synthesizer,
@@ -21,7 +21,7 @@ and the timestamps ride along with every chunk so the answer can cite the exact 
 
 Two data stores, distinct roles:
     - PostgreSQL holds the authoritative catalog + raw transcripts (the facts).
-    - Qdrant holds the chunk vectors (the similarity index used for retrieval).
+    - Pinecone holds the chunk vectors and does the embedding (integrated model).
 
 The engine is exposed as a process-wide singleton via get_engine() (bottom of file),
 so the web app (app.py) and the MCP server (mcp_tools/mcp_server.py) share one set of
@@ -40,13 +40,10 @@ import feedparser
 import requests
 from itertools import zip_longest
 from typing import List, Dict, Optional, Tuple
-from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
 import re
 from openai import OpenAI
 from config import (
-    EMBEDDING_MODEL,
-    QDRANT_URL, QDRANT_API_KEY, QDRANT_COLLECTION,
+    PINECONE_API_KEY, PINECONE_HOST, PINECONE_NAMESPACE, PINECONE_API_VERSION, PINECONE_TEXT_FIELD,
     LLM_BASE_URL, LLM_API_KEY, LLM_MODEL,
     TEMP_AUDIO_DIR, LIVE_AUDIO_BASE_URL, OVERSIZE_BYTES,
     DEFAULT_PODCAST_URLS, SYSTEM_PROMPT, build_user_prompt, DATABASE_URL,
@@ -67,28 +64,35 @@ SUBMIT_TIMEOUT = 180  # seconds to wait for the /v1/transcribe-url submit to ret
 
 
 class PodcastEngine:
-    """Core engine: manages transcription, embedding, search, and episode catalog."""
+    """Core engine: manages transcription, vector search (Pinecone), and the catalog.
+
+    Embeddings are NOT computed here — Pinecone's integrated embedding model embeds
+    both the upserted chunk text and the search query, so this engine only sends
+    text. The local gateway (LLM_BASE_URL) is used solely for transcription. Answer
+    synthesis runs on answer_client (a fast cloud endpoint, e.g. Google AI Studio)."""
 
     def __init__(self):
-        # One OpenAI-SDK client points at the gateway for BOTH chat completions and embeddings.
-        # No actual OpenAI service is contacted — the SDK is the standard wire-format client.
-        # Bounded timeout + no SDK retries so a busy gateway can't make a search
-        # request hang for minutes (the default is 600s with retries).
-        self.llm_client = OpenAI(api_key=LLM_API_KEY, base_url=f"{LLM_BASE_URL}/v1",
-                                 timeout=25.0, max_retries=1)
-        # Answer-synthesis client: a separate, faster endpoint if configured (e.g.
-        # Google AI Studio), else the same local gateway. Embeddings + transcription
-        # always use self.llm_client (the local gateway).
+        # Answer-synthesis client: a fast OpenAI-compatible endpoint if configured
+        # (e.g. Google AI Studio), else the local gateway. Bounded timeout/retries so
+        # a slow upstream can't make a search hang.
         if ANSWER_LLM_BASE_URL:
             self.answer_client = OpenAI(api_key=ANSWER_LLM_API_KEY, base_url=ANSWER_LLM_BASE_URL,
                                         timeout=30.0, max_retries=1)
             self.answer_model = ANSWER_LLM_MODEL
             logger.info("Answer synthesis on external endpoint: model=%s", ANSWER_LLM_MODEL)
         else:
-            self.answer_client = self.llm_client
+            self.answer_client = OpenAI(api_key=LLM_API_KEY, base_url=f"{LLM_BASE_URL}/v1",
+                                        timeout=30.0, max_retries=1)
             self.answer_model = LLM_MODEL
-        self.qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=60)
-        self.collection = QDRANT_COLLECTION
+
+        # Pinecone (integrated embedding) — REST, so no heavy SDK. One session with the
+        # records API base for this index.
+        self._pc = requests.Session()
+        self._pc.headers.update({"Api-Key": PINECONE_API_KEY,
+                                 "X-Pinecone-API-Version": PINECONE_API_VERSION})
+        self._pc_base = f"{PINECONE_HOST.rstrip('/')}/records/namespaces/{PINECONE_NAMESPACE}"
+        self._pc_host = PINECONE_HOST.rstrip('/')
+
         self._http = requests.Session()
         self._http.headers.update({"User-Agent": "PodcastSearchEngine/1.0"})
 
@@ -212,25 +216,62 @@ class PodcastEngine:
         return hashlib.md5(f"{podcast_title}_{episode_title}".encode()).hexdigest()
 
     @staticmethod
-    def _chunk_qdrant_id(episode_id: str, chunk_index: int) -> str:
-        """Deterministic UUIDv5 from `<episode_id>_c<NNNN>`. Qdrant requires point
-        IDs to be UUIDs or ints, so we hash the human-readable string into a UUID.
-        Same input → same UUID, so re-indexing a chunk overwrites it cleanly."""
-        original = f"{episode_id}_c{chunk_index:04d}"
-        return str(_uuid.uuid5(_uuid.NAMESPACE_DNS, original))
+    def _chunk_id(episode_id: str, chunk_index: int) -> str:
+        """Stable record id `<episode_id>_c<NNNN>` — same input → same id, so
+        re-indexing a chunk overwrites it cleanly. The `_c<NNNN>` suffix also lets
+        us list a single episode's chunks by id prefix."""
+        return f"{episode_id}_c{chunk_index:04d}"
 
-    # ── Embeddings ──────────────────────────────────────────────────────
+    # ── Pinecone (integrated embedding) ─────────────────────────────────
+    # Pinecone embeds the PINECONE_TEXT_FIELD on upsert and embeds the query on
+    # search, so we only ever send/receive text — no vectors cross the wire.
 
-    def create_embeddings(self, text_chunks: List[str]) -> List[List[float]]:
-        """Batch-embed via the gateway embeddinggemma. Max 64 inputs per request (the gateway cap)."""
-        if not text_chunks:
-            return []
-        all_embeddings = []
-        for i in range(0, len(text_chunks), 64):
-            batch = text_chunks[i:i + 64]
-            resp = self.llm_client.embeddings.create(model=EMBEDDING_MODEL, input=batch)
-            all_embeddings.extend([d.embedding for d in resp.data])
-        return all_embeddings
+    def _pc_upsert(self, records: List[Dict]) -> None:
+        """Upsert text records (NDJSON). Each record: {_id, text, ...metadata}.
+        Pinecone embeds the text field with the index's integrated model."""
+        if not records:
+            return
+        for i in range(0, len(records), 96):  # keep request bodies modest
+            batch = records[i:i + 96]
+            body = "\n".join(json.dumps(r) for r in batch)
+            r = self._pc.post(f"{self._pc_base}/upsert",
+                              data=body.encode("utf-8"),
+                              headers={"Content-Type": "application/x-ndjson"}, timeout=60)
+            r.raise_for_status()
+
+    def _pc_search(self, text: str, top_k: int = 25, episode_id: str = None) -> List[Dict]:
+        """Search by text (Pinecone embeds the query). Returns normalized matches:
+        {id, score, text, episode_id, episode_title, podcast_title, start_time, end_time, chunk_index}."""
+        query = {"inputs": {"text": text}, "top_k": top_k}
+        if episode_id:
+            query["filter"] = {"episode_id": {"$eq": episode_id}}
+        fields = ["text", "episode_id", "episode_title", "podcast_title",
+                  "chunk_index", "start_time", "end_time"]
+        r = self._pc.post(f"{self._pc_base}/search",
+                         json={"query": query, "fields": fields},
+                         headers={"Content-Type": "application/json"}, timeout=30)
+        r.raise_for_status()
+        hits = (r.json().get("result") or {}).get("hits") or []
+        out = []
+        for h in hits:
+            f = h.get("fields") or {}
+            out.append({
+                "id": h.get("_id"), "score": float(h.get("_score") or 0),
+                "text": f.get("text", ""),
+                "episode_id": f.get("episode_id", ""),
+                "episode_title": f.get("episode_title", "Unknown"),
+                "podcast_title": f.get("podcast_title", "Unknown"),
+                "chunk_index": f.get("chunk_index"),
+                "start_time": f.get("start_time"), "end_time": f.get("end_time"),
+            })
+        return out
+
+    def _pc_vector_count(self) -> int:
+        """Total vectors in the index (for stats/health)."""
+        r = self._pc.post(f"{self._pc_host}/describe_index_stats", json={},
+                         headers={"Content-Type": "application/json"}, timeout=15)
+        r.raise_for_status()
+        return int(r.json().get("totalVectorCount") or 0)
 
     # ── Episode Catalog (PostgreSQL-backed) ─────────────────────────────
 
@@ -325,88 +366,26 @@ class PodcastEngine:
 
     # ── Search ──────────────────────────────────────────────────────────
 
-    def _get_episode_context(self, episode_id: str, question_embedding: List[float],
-                             max_chunks: int = 20) -> list:
-        """Retrieve context chunks for a specific episode.
-
-        Two passes:
-          1. `scroll` with episode_id filter to enumerate every chunk (used to
-             pick an evenly-spaced spread for broad coverage).
-          2. `search` with episode_id filter to add the top semantically
-             relevant chunks to the spread.
-
-        Uses Qdrant's filter-based scroll — no fake query vector needed.
-        """
-        flt = Filter(must=[FieldCondition(key="episode_id",
-                                          match=MatchValue(value=episode_id))])
-
-        # Paginate — Qdrant scroll caps at the limit per call, but a few of
-        # this corpus's episodes go past 500 chunks (max observed: 789 for a
-        # ~5-hour Lex Fridman episode). Loop until offset is None.
-        all_points = []
-        offset = None
-        while True:
-            page, offset = self.qdrant.scroll(
-                collection_name=self.collection,
-                scroll_filter=flt,
-                limit=500,
-                offset=offset,
-                with_payload=True,
-                with_vectors=False,
-            )
-            all_points.extend(page)
-            if offset is None:
-                break
-
-        if not all_points:
-            return []
-        # Older migrated chunks may carry `chunk_index` as float (5.0); cast
-        # to int defensively so sorting is stable across the whole collection.
-        chunks = sorted(all_points, key=lambda p: int((p.payload or {}).get("chunk_index", 0) or 0))
-
-        if len(chunks) <= max_chunks:
-            selected = set(range(len(chunks)))
-        else:
-            step = len(chunks) / max_chunks
-            selected = {int(i * step) for i in range(max_chunks)}
-
-        sim_results = self.qdrant.query_points(
-            collection_name=self.collection,
-            query=question_embedding,
-            query_filter=flt,
-            limit=5,
-            with_payload=True,
-        ).points
-        for p in sim_results:
-            raw_idx = (p.payload or {}).get("chunk_index")
-            if raw_idx is None:
-                continue
-            idx = int(raw_idx)
-            if 0 <= idx < len(chunks):
-                selected.add(idx)
-
-        return [chunks[i] for i in sorted(selected)]
+    def _get_episode_context(self, episode_id: str, question: str, max_chunks: int = 20) -> list:
+        """Retrieve the most relevant chunks within a single episode (Pinecone search
+        filtered to that episode). Returns normalized match dicts."""
+        return self._pc_search(question, top_k=max_chunks, episode_id=episode_id)
 
     def _build_sources(self, matches: list) -> List[Dict]:
-        """Extract structured source metadata from Qdrant points.
-
-        Keeps the highest-scoring chunk per episode for the source list.
-        Accepts both ScoredPoint (from search) and Record (from scroll) — score
-        defaults to 0 for scrolled points which have no relevance score.
-        """
+        """Keep the highest-scoring chunk per episode for the source ('receipts') list.
+        Operates on normalized match dicts from _pc_search."""
         best_per_episode: Dict[str, Dict] = {}
-        for match in matches:
-            meta = match.payload or {}
-            episode_id = meta.get("episode_id", "")
-            score = round(getattr(match, "score", 0) or 0, 3)
+        for m in matches:
+            episode_id = m.get("episode_id", "")
+            score = round(m.get("score", 0) or 0, 3)
             if episode_id not in best_per_episode or score > best_per_episode[episode_id]["score"]:
                 best_per_episode[episode_id] = {
                     "episode_id": episode_id,
-                    "episode_title": meta.get("episode_title", "Unknown"),
-                    "podcast_title": meta.get("podcast_title", "Unknown"),
-                    "text": meta.get("text", "")[:300],
-                    "start_time": meta.get("start_time"),
-                    "end_time": meta.get("end_time"),
+                    "episode_title": m.get("episode_title", "Unknown"),
+                    "podcast_title": m.get("podcast_title", "Unknown"),
+                    "text": (m.get("text", "") or "")[:300],
+                    "start_time": m.get("start_time"),
+                    "end_time": m.get("end_time"),
                     "score": score,
                 }
         return sorted(best_per_episode.values(), key=lambda s: s["score"], reverse=True)
@@ -424,20 +403,22 @@ class PodcastEngine:
         return None
 
     def summarize_episode(self, episode_id: str) -> str:
-        """A short, grounded summary of an episode for its detail page — built from
-        an evenly-spaced sample of the episode's own chunks (so it reads the whole
-        arc, not just the intro). Raises on LLM failure; the caller degrades."""
-        flt = Filter(must=[FieldCondition(key="episode_id", match=MatchValue(value=episode_id))])
-        points, _ = self.qdrant.scroll(collection_name=self.collection, scroll_filter=flt,
-                                        limit=400, with_payload=True, with_vectors=False)
-        if not points:
-            return ""
-        points.sort(key=lambda p: int((p.payload or {}).get("chunk_index", 0) or 0))
-        # Sample up to 8 evenly-spaced chunks for broad coverage in a small prompt.
-        step = max(1, len(points) // 8)
-        sample = [p.payload.get("text", "") for p in points[::step]][:8]
-        title = points[0].payload.get("episode_title", "this episode")
-        context = "\n\n".join(sample)
+        """A short, grounded summary of an episode for its detail page — built from a
+        sample of the episode's own chunks. Raises on LLM failure; caller degrades."""
+        # Use the stored transcript segments (Postgres) for an even spread across the
+        # whole episode, rather than only the chunks a query surfaces.
+        segs = self.get_transcript_segments(episode_id) or []
+        title = "this episode"
+        if not segs:
+            hits = self._pc_search("overview summary", top_k=8, episode_id=episode_id)
+            if not hits:
+                return ""
+            sample = [h.get("text", "") for h in hits]
+            title = hits[0].get("episode_title", title)
+        else:
+            step = max(1, len(segs) // 8)
+            sample = [s.get("text", "") for s in segs[::step]][:8]
+        context = "\n\n".join(t for t in sample if t)
         resp = self.answer_client.chat.completions.create(
             model=self.answer_model,
             messages=[
@@ -450,6 +431,26 @@ class PodcastEngine:
         )
         return (resp.choices[0].message.content or "").strip()
 
+    def reindex_all_to_pinecone(self) -> int:
+        """Rebuild the vector index from saved Postgres transcripts — NO re-transcription.
+        Used when switching vector store/embedding model. For each indexed episode,
+        loads its stored segments and upserts them as text records to Pinecone."""
+        eps = self.get_indexed_episodes()
+        done = 0
+        for ep_id, ep in list(eps.items()):
+            segs = self.get_transcript_segments(ep_id)
+            if not segs:
+                logger.warning("No stored transcript for '%s' — skipping", ep.get("title", "")[:40])
+                continue
+            episode = {"title": ep["title"], "podcast_title": ep["podcast_title"]}
+            try:
+                self._upsert_chunks(episode, ep_id, segs)
+                done += 1
+                logger.info("Re-indexed '%s' (%d chunks)", ep["title"][:50], len(segs))
+            except Exception as e:
+                logger.error("Re-index failed for '%s': %s", ep["title"][:40], e)
+        return done
+
     # ── Hybrid Search ───────────────────────────────────────────────────
     #
     # Why hybrid? Pure vector (semantic) search understands *meaning* but
@@ -461,107 +462,70 @@ class PodcastEngine:
     # cost. The boost is deliberately capped so it nudges ranking without
     # overriding genuine semantic relevance.
 
-    def _keyword_boost(self, point, question_words: set) -> float:
-        """Compute a keyword-overlap boost for re-ranking.
-
-        Returns a bonus (0.0 - 0.15): +0.03 per query word found in the chunk's
-        text or episode title, capped at 0.15. Added on top of the vector score.
-        """
-        meta = point.payload or {}
-        text = meta.get("text", "").lower()
-        title = meta.get("episode_title", "").lower()
-        combined = text + " " + title
+    def _keyword_boost(self, m: Dict, question_words: set) -> float:
+        """Keyword-overlap bonus (0.0-0.15): +0.03 per query word found in the chunk's
+        text or episode title, capped at 0.15. Added on top of the semantic score."""
+        combined = (m.get("text", "") + " " + m.get("episode_title", "")).lower()
         hits = sum(1 for w in question_words if w in combined)
         return min(0.15, hits * 0.03)
 
-    def _rerank_matches(self, points: list, question: str) -> list:
-        """Re-rank points by combining vector similarity + keyword overlap.
-
-        Returns a list of `(combined_score, point)` tuples, sorted by combined
-        score descending. The score is returned alongside the point (rather than
-        attached to it) because Qdrant's ScoredPoint is a frozen pydantic model
-        that rejects extra attributes.
-        """
-        # Tokenize the question, then drop stop-words so the keyword boost keys
-        # on content words (names, topics) instead of "what / how / the / is".
+    def _rerank_matches(self, matches: list, question: str) -> list:
+        """Re-rank matches by semantic score + keyword overlap. Returns
+        (combined_score, match) tuples sorted descending."""
+        # Tokenize the question, drop stop-words so the boost keys on content words.
         question_words = set(re.sub(r'[^\w\s]', '', question.lower()).split())
         stop_words = {'what', 'how', 'the', 'is', 'are', 'was', 'were', 'do', 'does',
                       'did', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'and',
                       'or', 'but', 'not', 'with', 'from', 'by', 'about', 'as', 'it',
                       'this', 'that', 'they', 'them', 'their', 'i', 'you', 'we', 'me'}
         question_words -= stop_words
-
-        scored = []
-        for p in points:
-            vector_score = getattr(p, "score", 0) or 0
-            keyword_score = self._keyword_boost(p, question_words)
-            scored.append((vector_score + keyword_score, p))
-
+        scored = [(m.get("score", 0) + self._keyword_boost(m, question_words), m) for m in matches]
         scored.sort(key=lambda pair: pair[0], reverse=True)
         return scored
 
     def search_and_answer(self, question: str, episode_id: str = None) -> Dict:
-        """Hybrid search: vector similarity + keyword re-ranking + LLM synthesis.
+        """Hybrid search + grounded synthesis.
 
-        Pipeline:
-        1. Embed question (embeddinggemma) -> query Qdrant (semantic search, top_k=25)
-        2. Re-rank results with keyword boost (proper nouns, exact phrases)
-        3. Filter by dynamic threshold
+        1. Pinecone search (it embeds the query) → top 25 chunks
+        2. Re-rank with a keyword boost (proper nouns, exact phrases)
+        3. Dynamic threshold trims to the keepers
         4. Build context with timestamps (the citation metadata)
-        5. LLM generates grounded answer with citations
+        5. The answer model writes a grounded, cited answer
 
         Returns: {"answer": str, "sources": [{"episode_id", "episode_title", ...}]}
         """
-        question_embedding = self.llm_client.embeddings.create(
-            model=EMBEDDING_MODEL, input=[question],
-        ).data[0].embedding
-
         if episode_id:
-            matches = self._get_episode_context(episode_id, question_embedding)
+            matches = self._get_episode_context(episode_id, question)
         else:
-            # Step 1: Broad vector retrieval
-            results = self.qdrant.query_points(
-                collection_name=self.collection,
-                query=question_embedding,
-                limit=25,
-                with_payload=True,
-            ).points
-            # Absolute floor: if even the single best match is weak (< 0.25
-            # cosine), the corpus simply doesn't cover this question — bail early
-            # rather than feed the LLM noise. "Say you don't know" is a feature.
-            if not results or results[0].score < 0.25:
+            # Step 1: broad semantic retrieval (Pinecone embeds the query)
+            results = self._pc_search(question, top_k=25)
+            # Absolute floor: if even the best match is weak, the corpus doesn't
+            # cover this — bail rather than feed the model noise. (Scores from the
+            # integrated model run lower than raw cosine, so the floor is modest.)
+            if not results or results[0]["score"] < 0.08:
                 return {"answer": "No relevant content found for this query.", "sources": []}
-
-            # Step 2: Re-rank with keyword boost — returns (combined_score, point) tuples
+            # Step 2: keyword re-rank → (combined_score, match) tuples
             reranked = self._rerank_matches(results, question)
-
-            # Step 3: Dynamic (relative) threshold. Instead of a fixed cutoff, keep
-            # only matches within 55% of the best score for *this* query — strong
-            # queries keep a tight, high-quality set; broad ones keep more. Cap at
-            # 15 excerpts so the LLM context stays focused.
+            # Step 3: dynamic relative threshold — keep within 55% of the best
+            # combined score, capped at 15 excerpts.
             best_score = reranked[0][0] if reranked else 0
-            threshold = max(0.20, best_score * 0.55)
-            matches = [p for combined, p in reranked if combined >= threshold][:15]
+            threshold = max(0.05, best_score * 0.55)
+            matches = [m for combined, m in reranked if combined >= threshold][:15]
 
         if not matches:
             return {"answer": "No relevant content found for this query.", "sources": []}
 
-        # Step 4: Build the context block. Each excerpt is labelled with its episode
-        # and timestamp so the LLM can cite it — and so the cited claim is checkable.
+        # Step 4: build the context block — each excerpt labelled with its episode +
+        # timestamp so the model can cite it and the claim stays checkable.
         context_parts = []
-        for i, match in enumerate(matches, 1):
-            meta = match.payload or {}
-            text = meta.get("text", "")
-            episode = meta.get("episode_title", "Unknown Episode")
-            start = meta.get("start_time")
-            speakers = meta.get("speakers", [])
-
+        for i, m in enumerate(matches, 1):
+            text = m.get("text", "")
+            episode = m.get("episode_title", "Unknown Episode")
+            start = m.get("start_time")
             header = f'[EXCERPT {i}]\nEpisode: "{episode}"'
             if start is not None:
-                mins, secs = int(start // 60), int(start % 60)
+                mins, secs = int(float(start) // 60), int(float(start) % 60)
                 header += f"\nTimestamp: {mins}:{secs:02d}"
-            if speakers:
-                header += f"\nSpeakers: {', '.join(speakers)}"
             context_parts.append(f"{header}\nContent: {text}")
 
         # Step 5: LLM generates grounded answer
@@ -921,28 +885,23 @@ class PodcastEngine:
             """, (episode_id, json.dumps(segments)))
         logger.info("Saved transcript to PostgreSQL: %s (%d segments)", episode_title[:50], len(segments))
 
-    def _upsert_to_qdrant(self, episode: Dict, episode_id: str,
-                          chunk_data: List[Dict], chunk_texts: List[str],
-                          embeddings: List):
-        """Upsert chunks to Qdrant. IDs are deterministic UUIDv5 so re-indexing
-        an episode overwrites cleanly. qdrant-client batches internally."""
-        points = []
-        for i, (chunk_text, emb) in enumerate(zip(chunk_texts, embeddings)):
-            points.append(PointStruct(
-                id=self._chunk_qdrant_id(episode_id, i),
-                vector=emb,
-                payload={
-                    "episode_id":    episode_id,
-                    "episode_title": episode["title"],
-                    "podcast_title": episode["podcast_title"],
-                    "text":          chunk_text,
-                    "chunk_index":   i,
-                    "start_time":    chunk_data[i]["start_time"],
-                    "end_time":      chunk_data[i]["end_time"],
-                    "speakers":      chunk_data[i]["speakers"],
-                },
-            ))
-        self.qdrant.upsert(collection_name=self.collection, points=points, wait=True)
+    def _upsert_chunks(self, episode: Dict, episode_id: str, chunk_data: List[Dict]):
+        """Upsert an episode's chunks to Pinecone as TEXT records. Pinecone's
+        integrated model embeds the `text` field — we never compute vectors. IDs are
+        deterministic (`<episode_id>_c<NNNN>`) so re-indexing overwrites cleanly."""
+        records = []
+        for i, c in enumerate(chunk_data):
+            records.append({
+                "_id":            self._chunk_id(episode_id, i),
+                PINECONE_TEXT_FIELD: c["text"],          # the field Pinecone embeds
+                "episode_id":     episode_id,
+                "episode_title":  episode["title"],
+                "podcast_title":  episode["podcast_title"],
+                "chunk_index":    i,
+                "start_time":     float(c.get("start_time") or 0),
+                "end_time":       float(c.get("end_time") or 0),
+            })
+        self._pc_upsert(records)
 
     # ── Processing Pipeline ─────────────────────────────────────────────
 
@@ -963,31 +922,27 @@ class PodcastEngine:
 
         # _transcribe already returns chunked segments — no extra step.
         chunk_data = segments
-        chunk_texts = [f"Episode: {title}\n\n{c['text']}" for c in chunk_data]
 
         if status_callback:
-            status_callback("embedding", title, f"Embedding {len(chunk_texts)} chunks...")
-        embeddings = self.create_embeddings(chunk_texts)
-
-        if status_callback:
-            status_callback("saving", title, f"Saving {len(chunk_texts)} chunks to database...")
+            status_callback("saving", title, f"Indexing {len(chunk_data)} chunks...")
         try:
             # Order matters: episode row must exist before transcript (FK constraint)
             self._upsert_episode_catalog(
                 episode_id, title, episode["podcast_title"],
                 episode.get("audio_url", ""),
                 episode.get("image_url", ""),
-                len(chunk_texts),
+                len(chunk_data),
             )
             self._save_transcript(segments, episode_id, title)
-            self._upsert_to_qdrant(episode, episode_id, chunk_data, chunk_texts, embeddings)
+            # Pinecone embeds the chunk text on upsert — no local embedding step.
+            self._upsert_chunks(episode, episode_id, chunk_data)
         except Exception as e:
             logger.error("DB upsert failed for '%s': %s", title[:50], e)
             if status_callback:
                 status_callback("error", title, f"DB upload failed: {str(e)[:100]}")
             return False, f"DB upload failed: {str(e)[:150]}"
 
-        logger.info("Indexed episode: %s (%d chunks)", title, len(chunk_texts))
+        logger.info("Indexed episode: %s (%d chunks)", title, len(chunk_data))
         return True, ""
 
     def auto_process_episodes(self, status_callback=None, max_episodes=5) -> int:
@@ -1140,13 +1095,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="python transcribe.py --episodes 5")
     parser.add_argument("--episodes", type=int, default=5)
     parser.add_argument("--all", action="store_true")
+    parser.add_argument("--reindex", action="store_true",
+                        help="Rebuild the vector index from saved transcripts (no re-transcription)")
     args = parser.parse_args()
 
-    max_episodes = None if args.all else args.episodes
-
     engine = get_engine()
+
+    if args.reindex:
+        n = engine.reindex_all_to_pinecone()
+        logger.info("Re-indexed %d episodes into Pinecone.", n)
+        raise SystemExit(0)
+
+    max_episodes = None if args.all else args.episodes
     logger.info("Episodes to process: %s", "all" if args.all else args.episodes)
-    logger.info("%d already in Qdrant", len(engine.get_indexed_episodes()))
+    logger.info("%d already indexed", len(engine.get_indexed_episodes()))
 
     # ── Live relay setup (so standalone `transcribe.py --all` also pushes
     # events to the production live site). Mirrors the relay in app.py for
