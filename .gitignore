@@ -24,6 +24,10 @@ HANDOFF.local.md
 # LinkedIn project assets (writeups, screenshots, GIFs — local-only)
 linkedin/
 
+# Slide-deck source — lives in this repo's `gh-pages` branch (the published deck),
+# kept here only as a local working copy. Not part of the app on `main`.
+podsearch-deck/
+
 # Scratch / local-only working files
 tmp/
 
