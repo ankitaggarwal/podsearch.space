@@ -6,7 +6,7 @@ claim is traceable back to the episode it came from.
 
 🌐 **Live:** [podsearch.space](https://podsearch.space)
 
-![Podcast Search — grounded answers from real podcast transcripts](docs/hero.gif)
+![Podcast Search — ask a shelf of podcasts a question, get an answer you can trust](screenshots/podcast-search-demo.gif)
 
 It ingests podcast RSS feeds, transcribes the audio with a self-hosted inference
 gateway, chunks the transcripts and stores them in Pinecone (whose integrated model
@@ -23,7 +23,7 @@ RSS feed → audio URL → transcribe → chunk → Pinecone (embed + store) →
                                               web app  ·  MCP server
 ```
 
-1. **Ingest** — read RSS feeds (26 shows wired in), resolve each episode's real audio
+1. **Ingest** — read RSS feeds (13 shows wired in), resolve each episode's real audio
    URL (including via the iTunes lookup API for Apple Podcasts links), interleave
    round-robin across shows, and dedupe on audio URL.
 2. **Transcribe** — send the audio to a self-hosted gateway (Parakeet) for per-utterance
@@ -36,6 +36,8 @@ RSS feed → audio URL → transcribe → chunk → Pinecone (embed + store) →
 5. **Retrieve & answer** — Pinecone embeds the question, pulls the top 25, re-rank with a keyword
    boost, trim with a dynamic threshold, and let Gemma 4 synthesize an answer **only**
    from the retrieved excerpts — citing every claim.
+
+![One engine, two surfaces — the indexing pipeline and the grounded search path](screenshots/podcast-search-architecture.png)
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the design rationale and [SCHEMA.md](SCHEMA.md)
 for the data model. The retrieval engine is also exposed as an
