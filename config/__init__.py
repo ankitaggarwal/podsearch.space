@@ -68,6 +68,19 @@ PINECONE_NAMESPACE   = os.getenv("PINECONE_NAMESPACE", "__default__")
 PINECONE_API_VERSION = os.getenv("PINECONE_API_VERSION", "2025-04")
 PINECONE_TEXT_FIELD  = os.getenv("PINECONE_TEXT_FIELD", "text")  # field Pinecone embeds
 
+# ── Hybrid embedding backend (self-hosted indexing, Pinecone search) ──────────
+# When PINECONE_V2_HOST is set, the engine switches to a STANDARD (non-integrated)
+# index: the crawler computes chunk vectors on the self-hosted Mac gateway
+# (nv-embedqa-1b-v2 == Pinecone's llama-text-embed-v2; validated cosine ~0.99) and
+# upserts raw vectors — so indexing costs ZERO Pinecone embedding tokens. Live search
+# still embeds the *query* on Pinecone (cheap), then queries this index by vector.
+# Unset → legacy integrated-index behaviour (Pinecone embeds everything).
+PINECONE_V2_HOST     = os.getenv("PINECONE_V2_HOST", "")          # standard index host URL
+EMBED_DIMENSION      = int(os.getenv("EMBED_DIMENSION", "768"))   # Matryoshka dim, matches index
+# Chunk embeddings come from the Mac gateway's /v1/podsearch-embed (reuses LLM_BASE_URL/KEY).
+EMBED_GATEWAY_URL    = os.getenv("EMBED_GATEWAY_URL", "") or LLM_BASE_URL
+EMBED_GATEWAY_KEY    = os.getenv("EMBED_GATEWAY_KEY", "") or LLM_API_KEY
+
 # Transcription via /v1/transcribe-url has a 50 MB cap on the downloaded audio.
 # For oversize episodes, the engine pre-compresses with ffmpeg to 16 kHz mono
 # Opus ~32 kbps and serves the compressed file from TEMP_AUDIO_DIR via a reverse

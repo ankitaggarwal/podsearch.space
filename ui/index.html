@@ -422,7 +422,7 @@ function SearchView({q}){
   const [state,setState]=useState({loading:true});
   useEffect(()=>{let on=true;setState({loading:true});
     api('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})})
-      .then(d=>on&&setState({loading:false,data:d})).catch(()=>on&&setState({loading:false,err:true}));
+      .then(d=>on&&setState({loading:false,data:d})).catch(e=>on&&setState({loading:false,err:(e&&(e.status===503||e.status===429))?'busy':'down'}));
     return()=>{on=false};},[q]);
   const html = state.data?.answer ? DOMPurify.sanitize(marked.parse(state.data.answer)) : '';
   const sources=state.data?.sources||[];
@@ -432,7 +432,8 @@ function SearchView({q}){
       <span className="kicker" style={{cursor:'pointer'}} onClick={()=>go('#/')}>← back to discover</span>
       <h2 className="askedq" style={{marginTop:14}}>“{q}”</h2>
       {state.loading && <><div className="grounded-tag"><Eq/> reading the transcripts…</div><div className="spin"></div></>}
-      {state.err && <div className="empty-card"><h3>The search engine is unreachable</h3><p>The answer service didn’t respond. This usually means the inference gateway is offline — try again in a moment.</p></div>}
+      {state.err==='busy' && <div className="empty-card"><h3>The shelf is busy right now</h3><p>Search is handling a burst of traffic (or a fresh batch of episodes is being indexed). Give it a few seconds and ask again.</p></div>}
+      {state.err==='down' && <div className="empty-card"><h3>The search engine is unreachable</h3><p>Something went wrong reaching the search service. Please try again in a moment.</p></div>}
       {state.data && !state.loading && (noHits
         ? <div className="empty-card"><Mascot size={64}/><h3>Nothing on the shelf covers that — yet</h3><p>Either the transcripts don’t discuss this, or the library is still being indexed. It won’t invent an answer it can’t cite.</p><div style={{marginTop:18}}><button className="btn" onClick={()=>go('#/pipeline')}>Check the pipeline <I.arrow/></button></div></div>
         : <>

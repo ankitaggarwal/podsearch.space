@@ -29,6 +29,7 @@ import os
 import re
 import time
 import threading
+import requests
 from collections import deque, defaultdict
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
@@ -486,7 +487,15 @@ class SearchQuery(BaseModel):
 
 @app.post("/api/search")
 def search(query: SearchQuery):
-    result = engine.search_and_answer(query.question, episode_id=query.episode_id)
+    try:
+        result = engine.search_and_answer(query.question, episode_id=query.episode_id)
+    except requests.HTTPError as e:
+        # Pinecone throttled us even after retries (a heavy indexing run can
+        # exhaust the request quota). Surface a true 503 so the UI says "busy,
+        # try again" rather than a generic 500 blamed on the wrong service.
+        if e.response is not None and e.response.status_code == 429:
+            raise HTTPException(status_code=503, detail="Search is busy — try again in a moment.")
+        raise
     return result
 
 

@@ -44,6 +44,7 @@ import re
 from openai import OpenAI
 from config import (
     PINECONE_API_KEY, PINECONE_HOST, PINECONE_NAMESPACE, PINECONE_API_VERSION, PINECONE_TEXT_FIELD,
+    PINECONE_V2_HOST, EMBED_DIMENSION, EMBED_GATEWAY_URL, EMBED_GATEWAY_KEY,
     LLM_BASE_URL, LLM_API_KEY, LLM_MODEL,
     TEMP_AUDIO_DIR, LIVE_AUDIO_BASE_URL, OVERSIZE_BYTES,
     DEFAULT_PODCAST_URLS, SYSTEM_PROMPT, build_user_prompt, DATABASE_URL,
@@ -92,6 +93,15 @@ class PodcastEngine:
                                  "X-Pinecone-API-Version": PINECONE_API_VERSION})
         self._pc_base = f"{PINECONE_HOST.rstrip('/')}/records/namespaces/{PINECONE_NAMESPACE}"
         self._pc_host = PINECONE_HOST.rstrip('/')
+
+        # Hybrid backend: when a standard (non-integrated) index host is configured,
+        # the crawler embeds chunks on the self-hosted Mac gateway and upserts raw
+        # vectors here; search embeds the query on Pinecone and queries by vector.
+        self._v2_host = PINECONE_V2_HOST.rstrip('/')
+        self._use_v2 = bool(self._v2_host)
+        if self._use_v2:
+            logger.info("Embedding backend: HYBRID (Mac gateway indexing → standard index, "
+                        "Pinecone query embedding). host=%s", self._v2_host)
 
         self._http = requests.Session()
         self._http.headers.update({"User-Agent": "PodcastSearchEngine/1.0"})
@@ -247,16 +257,27 @@ class PodcastEngine:
                 break
 
     def _pc_search(self, text: str, top_k: int = 25, episode_id: str = None) -> List[Dict]:
-        """Search by text (Pinecone embeds the query). Returns normalized matches:
+        """Search by text. Returns normalized matches:
         {id, score, text, episode_id, episode_title, podcast_title, start_time, end_time, chunk_index}."""
+        if self._use_v2:
+            return self._pc_v2_search(text, top_k=top_k, episode_id=episode_id)
         query = {"inputs": {"text": text}, "top_k": top_k}
         if episode_id:
             query["filter"] = {"episode_id": {"$eq": episode_id}}
         fields = ["text", "episode_id", "episode_title", "podcast_title",
                   "chunk_index", "start_time", "end_time"]
-        r = self._pc.post(f"{self._pc_base}/search",
-                         json={"query": query, "fields": fields},
-                         headers={"Content-Type": "application/json"}, timeout=30)
+        # Retry on 429 (the integrated-embedding tier rate-limits reads, and a
+        # concurrent indexing run can eat the request quota) with exponential
+        # backoff so a transient throttle degrades to "slow" rather than failing
+        # the search outright — same policy as the upsert write path.
+        for attempt in range(4):
+            r = self._pc.post(f"{self._pc_base}/search",
+                             json={"query": query, "fields": fields},
+                             headers={"Content-Type": "application/json"}, timeout=30)
+            if r.status_code == 429 and attempt < 3:
+                _time.sleep(2 ** attempt)
+                continue
+            break
         r.raise_for_status()
         hits = (r.json().get("result") or {}).get("hits") or []
         out = []
@@ -275,10 +296,88 @@ class PodcastEngine:
 
     def _pc_vector_count(self) -> int:
         """Total vectors in the index (for stats/health)."""
-        r = self._pc.post(f"{self._pc_host}/describe_index_stats", json={},
+        host = self._v2_host if self._use_v2 else self._pc_host
+        r = self._pc.post(f"{host}/describe_index_stats", json={},
                          headers={"Content-Type": "application/json"}, timeout=15)
         r.raise_for_status()
         return int(r.json().get("totalVectorCount") or 0)
+
+    # ── Hybrid backend: Mac-gateway indexing + Pinecone query embedding ──────
+    #
+    # Active only when PINECONE_V2_HOST is set. Chunk vectors are computed on the
+    # self-hosted Mac gateway (nv-embedqa-1b-v2, 768-dim, L2-normalized) so indexing
+    # spends NO Pinecone embedding tokens. The query is still embedded by Pinecone's
+    # hosted llama-text-embed-v2 — the same model — then truncated to 768 to match.
+
+    def _gateway_embed(self, texts: List[str], input_type: str) -> List[List[float]]:
+        """Embed text on the self-hosted Mac gateway. input_type: 'passage' | 'query'."""
+        out: List[List[float]] = []
+        for i in range(0, len(texts), 96):          # gateway caps 128/call; 96 is comfortable
+            batch = texts[i:i + 96]
+            r = self._http.post(
+                f"{EMBED_GATEWAY_URL}/v1/podsearch-embed",
+                headers={"Authorization": f"Bearer {EMBED_GATEWAY_KEY}",
+                         "Content-Type": "application/json"},
+                json={"inputs": batch, "input_type": input_type, "dimension": EMBED_DIMENSION},
+                timeout=600)
+            r.raise_for_status()
+            out.extend(r.json()["embeddings"])
+        return out
+
+    def _pinecone_embed_query(self, text: str) -> List[float]:
+        """Embed a search query on Pinecone (llama-text-embed-v2), truncate to the
+        index dimension + renormalize. Cheap: a query is a handful of tokens."""
+        r = self._pc.post("https://api.pinecone.io/embed",
+                          json={"model": "llama-text-embed-v2",
+                                "parameters": {"input_type": "query", "truncate": "END"},
+                                "inputs": [{"text": text}]},
+                          headers={"Content-Type": "application/json"}, timeout=20)
+        r.raise_for_status()
+        vec = r.json()["data"][0]["values"][:EMBED_DIMENSION]
+        n = sum(x * x for x in vec) ** 0.5 or 1.0
+        return [x / n for x in vec]
+
+    def _pc_v2_upsert(self, vectors: List[Dict]) -> None:
+        """Upsert raw vectors to the standard index, batched, with 429 backoff."""
+        for i in range(0, len(vectors), 200):
+            batch = vectors[i:i + 200]
+            for attempt in range(5):
+                r = self._pc.post(f"{self._v2_host}/vectors/upsert",
+                                  json={"vectors": batch, "namespace": PINECONE_NAMESPACE},
+                                  headers={"Content-Type": "application/json"}, timeout=60)
+                if r.status_code == 429 and attempt < 4:
+                    _time.sleep(2 ** attempt)
+                    continue
+                r.raise_for_status()
+                break
+
+    def _pc_v2_search(self, text: str, top_k: int = 25, episode_id: str = None) -> List[Dict]:
+        """Vector search against the standard index (query embedded on Pinecone)."""
+        body = {"vector": self._pinecone_embed_query(text), "topK": top_k,
+                "namespace": PINECONE_NAMESPACE, "includeMetadata": True}
+        if episode_id:
+            body["filter"] = {"episode_id": {"$eq": episode_id}}
+        for attempt in range(4):
+            r = self._pc.post(f"{self._v2_host}/query", json=body,
+                             headers={"Content-Type": "application/json"}, timeout=30)
+            if r.status_code == 429 and attempt < 3:
+                _time.sleep(2 ** attempt)
+                continue
+            break
+        r.raise_for_status()
+        out = []
+        for h in r.json().get("matches") or []:
+            f = h.get("metadata") or {}
+            out.append({
+                "id": h.get("id"), "score": float(h.get("score") or 0),
+                "text": f.get("text", ""),
+                "episode_id": f.get("episode_id", ""),
+                "episode_title": f.get("episode_title", "Unknown"),
+                "podcast_title": f.get("podcast_title", "Unknown"),
+                "chunk_index": f.get("chunk_index"),
+                "start_time": f.get("start_time"), "end_time": f.get("end_time"),
+            })
+        return out
 
     # ── Episode Catalog (PostgreSQL-backed) ─────────────────────────────
 
@@ -893,9 +992,31 @@ class PodcastEngine:
         logger.info("Saved transcript to PostgreSQL: %s (%d segments)", episode_title[:50], len(segments))
 
     def _upsert_chunks(self, episode: Dict, episode_id: str, chunk_data: List[Dict]):
-        """Upsert an episode's chunks to Pinecone as TEXT records. Pinecone's
-        integrated model embeds the `text` field — we never compute vectors. IDs are
-        deterministic (`<episode_id>_c<NNNN>`) so re-indexing overwrites cleanly."""
+        """Index an episode's chunks. IDs are deterministic (`<episode_id>_c<NNNN>`)
+        so re-indexing overwrites cleanly.
+
+        Hybrid backend (PINECONE_V2_HOST set): chunk text is embedded on the self-hosted
+        Mac gateway (nv-embedqa, 'passage') and upserted as RAW VECTORS — zero Pinecone
+        embedding tokens. Legacy: upsert TEXT records and let Pinecone's integrated model
+        embed them."""
+        if self._use_v2:
+            texts = [c["text"] for c in chunk_data]
+            vecs = self._gateway_embed(texts, "passage")
+            vectors = [{
+                "id":     self._chunk_id(episode_id, i),
+                "values": vecs[i],
+                "metadata": {
+                    "text":          c["text"],
+                    "episode_id":    episode_id,
+                    "episode_title": episode["title"],
+                    "podcast_title": episode["podcast_title"],
+                    "chunk_index":   i,
+                    "start_time":    float(c.get("start_time") or 0),
+                    "end_time":      float(c.get("end_time") or 0),
+                },
+            } for i, c in enumerate(chunk_data)]
+            self._pc_v2_upsert(vectors)
+            return
         records = []
         for i, c in enumerate(chunk_data):
             records.append({
